@@ -19,6 +19,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 			StreamObserver<DidaTradeMain.PopulateReply> responseObserver) {
 		// for debug purposes
 		System.out.println("Receiving populate request:" + request);
+		this.server_state.checkDebugState();
 
 		int reqid = request.getReqid();
 		int quantity = request.getQuantity();
@@ -50,6 +51,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 			StreamObserver<DidaTradeMain.AddUserReply> responseObserver) {
 		// for debug purposes
 		System.out.println("Receiving add request:" + request);
+		this.server_state.checkDebugState();
 
 		int reqid = request.getReqid();
 		int uid = request.getUserid();
@@ -82,6 +84,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 	public void buy(DidaTradeMain.BuyRequest request, StreamObserver<DidaTradeMain.BuyReply> responseObserver) {
 		// for debug purposes
 		System.out.println("Receiving buy request:" + request);
+		this.server_state.checkDebugState();
 
 		int reqid = request.getReqid();
 		int uid = request.getUserid();
@@ -113,6 +116,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 	public void sell(DidaTradeMain.SellRequest request, StreamObserver<DidaTradeMain.SellReply> responseObserver) {
 		// for debug purposes
 		System.out.println("Receiving sell request:" + request);
+		this.server_state.checkDebugState();
 
 		int reqid = request.getReqid();
 		int uid = request.getUserid();
@@ -145,6 +149,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 			StreamObserver<DidaTradeMain.BalanceReply> responseObserver) {
 		// for debug purposes
 		System.out.println("Receiving balance request:" + request);
+		this.server_state.checkDebugState();
 
 		int reqid = request.getReqid();
 		int uid = request.getUserid();
@@ -177,6 +182,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 	public void dump(DidaTradeMain.DumpRequest request, StreamObserver<DidaTradeMain.DumpReply> responseObserver) {
 		// for debug purposes
 		System.out.println("Receiving dump request:" + request);
+		this.server_state.checkDebugState();
 
 		int reqid = request.getReqid();
 

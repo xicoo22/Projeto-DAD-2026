@@ -26,6 +26,7 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 	public void phaseone(DidaTradePaxos.PhaseOneRequest request,
 			StreamObserver<DidaTradePaxos.PhaseOneReply> responseObserver) {
 		System.out.println("Receive phase1 request: \n" + request);
+		this.server_state.checkDebugState();
 
 		int instance = request.getInstance();
 		int ballot = request.getRequestballot();
@@ -68,6 +69,7 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 	public void phasetwo(DidaTradePaxos.PhaseTwoRequest request,
 			StreamObserver<DidaTradePaxos.PhaseTwoReply> responseObserver) {
 		System.out.println("Receive phase two request: \n" + request);
+		this.server_state.checkDebugState();
 
 		int instance = request.getInstance();
 		int ballot = request.getRequestballot();
@@ -134,7 +136,8 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 
 	@Override
 	public void learn(DidaTradePaxos.LearnRequest request, StreamObserver<DidaTradePaxos.LearnReply> responseObserver) {
-		// System.out.println("Receive learn request: \n" + request);
+		System.out.println("Receive learn request: \n" + request);
+		this.server_state.checkDebugState();
 
 		int instance = request.getInstance();
 		int ballot = request.getBallot();

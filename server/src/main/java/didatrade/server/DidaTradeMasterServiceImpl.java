@@ -78,12 +78,33 @@ public class DidaTradeMasterServiceImpl extends DidaTradeMasterServiceGrpc.DidaT
 		System.out.println(request);
 
 		boolean response_value = true;
+		DebugMode mode = DebugMode.fromInt(request.getMode());
+
+		switch (mode) {
+			case CRASH:
+				System.out.println("Exiting server due to debug mode CRASH");
+				System.exit(1);
+				break;
+			case FREEZE:
+				this.server_state.setDebugMode(mode);
+				break;
+			case UNFREEZE:
+				this.server_state.setDebugMode(DebugMode.NONE);
+				break;
+			case SLOW_ON:
+				this.server_state.setDebugMode(mode);
+				break;
+			case SLOW_OFF:
+				this.server_state.setDebugMode(DebugMode.NONE);
+				break;
+			default:
+				System.err.println("Ignoring invalid debug mode");
+				break;
+		}
+
+		System.out.println("Debug mode is now = " + this.server_state.getDebugMode());
 
 		int request_id = request.getReqid();
-		this.server_state.setDebugMode(request.getMode());
-
-		// for debug purposes
-		System.out.println("Setting debug mode to = " + this.server_state.getDebugMode());
 
 		DidaTradeMaster.SetDebugReply.Builder response_builder = DidaTradeMaster.SetDebugReply.newBuilder();
 		response_builder.setReqid(request_id);

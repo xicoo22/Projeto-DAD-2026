@@ -103,7 +103,8 @@ public class Console {
 				case "help":
 					System.out.println("\thelp");
 					System.out.println("\tballot number replica");
-					System.out.println("\tdebug mode replica");
+					System.out
+							.println("\tdebug mode replica (mode: 1=crash 2=freeze 3=un-freeze 4=slow-mode-on 5=slow-mode-off)");
 					System.out.println("\texit");
 					break;
 				case "ballot":

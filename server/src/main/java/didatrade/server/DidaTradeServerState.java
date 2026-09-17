@@ -31,7 +31,7 @@ public class DidaTradeServerState {
 
 	private int current_ballot;
 	private int completed_ballot;
-	private int debug_mode;
+	private DebugMode debug_mode;
 	private boolean fastpaxos_on;
 
 	MainLoop main_loop;
@@ -42,7 +42,7 @@ public class DidaTradeServerState {
 		this.scheduler = new ConfigurationScheduler(schedule);
 		this.base_port = port;
 		this.my_id = myself;
-		this.debug_mode = 0;
+		this.debug_mode = DebugMode.NONE;
 		this.fastpaxos_on = false;
 		this.current_ballot = 0;
 		this.completed_ballot = -1;
@@ -143,12 +143,28 @@ public class DidaTradeServerState {
 		this.fastpaxos_on = mode;
 	}
 
-	public synchronized int getDebugMode() {
+	public synchronized DebugMode getDebugMode() {
 		return this.debug_mode;
 	}
 
-	public synchronized void setDebugMode(int mode) {
+	public synchronized void setDebugMode(DebugMode mode) {
 		this.debug_mode = mode;
+		this.notifyAll();
 	}
 
+	public synchronized void checkDebugState() {
+		while (this.debug_mode == DebugMode.FREEZE) {
+			try {
+				wait();
+			} catch (InterruptedException e) {
+			}
+		}
+		if (this.debug_mode == DebugMode.SLOW_ON) {
+			try {
+				int delay = new java.util.Random().nextInt(2000);
+				Thread.sleep(delay);
+			} catch (InterruptedException e) {
+			}
+		}
+	}
 }
