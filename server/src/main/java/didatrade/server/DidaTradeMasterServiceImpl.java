@@ -99,6 +99,7 @@ public class DidaTradeMasterServiceImpl extends DidaTradeMasterServiceGrpc.DidaT
 				break;
 			default:
 				System.err.println("Ignoring invalid debug mode");
+				response_value = false;
 				break;
 		}
 
