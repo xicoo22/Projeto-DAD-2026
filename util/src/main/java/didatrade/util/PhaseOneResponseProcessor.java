@@ -71,6 +71,11 @@ public class PhaseOneResponseProcessor extends GenericResponseProcessor<DidaTrad
       if (last_response.getMaxballot() > this.maxballot) {
         this.maxballot = last_response.getMaxballot();
       }
+      // Possible otimization: if we know an acceptor already saw an higher ballot,
+      // there is no need to wait for the rest because even if we succed it will get
+      // replaced by the other and we dont need to wait.
+      this.accepted = false;
+      return true;
     }
     int remaining = this.nAcceptors - this.nResponses;
     boolean success = this.acceptedCount >= this.quorum;
