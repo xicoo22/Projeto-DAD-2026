@@ -25,7 +25,6 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 	@Override
 	public void phaseone(DidaTradePaxos.PhaseOneRequest request,
 			StreamObserver<DidaTradePaxos.PhaseOneReply> responseObserver) {
-		System.out.println("Receive phase1 request: \n" + request);
 		this.server_state.checkDebugState();
 
 		int instance = request.getInstance();
@@ -43,10 +42,8 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 
 		int maxballot = this.server_state.getCurrentBallot();
 
-		// System.out.println("Instance = " + instance + " ballot = " + ballot + "
-		// current_ballot = " + this.server_state.getCurrentBallot() + " val = " + value
-		// + " valballot = " + valballot + " maxballot = " + maxballot + " accepted = "
-		// + accepted);
+		System.out.println("[ACCEPTOR] p1 recv instance=" + instance + " ballot=" + ballot
+				+ " -> accept=" + accepted + " maxballot=" + maxballot);
 
 		DidaTradePaxos.PhaseOneReply.Builder response_builder = DidaTradePaxos.PhaseOneReply.newBuilder();
 		response_builder.setInstance(instance);
@@ -59,8 +56,6 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 
 		DidaTradePaxos.PhaseOneReply response = response_builder.build();
 
-		System.out.println("Sending phase1 response: " + response);
-
 		responseObserver.onNext(response);
 		responseObserver.onCompleted();
 	}
@@ -68,7 +63,6 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 	@Override
 	public void phasetwo(DidaTradePaxos.PhaseTwoRequest request,
 			StreamObserver<DidaTradePaxos.PhaseTwoReply> responseObserver) {
-		System.out.println("Receive phase two request: \n" + request);
 		this.server_state.checkDebugState();
 
 		int instance = request.getInstance();
@@ -86,6 +80,9 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 		} else
 			maxballot = this.server_state.getCurrentBallot();
 
+		System.out.println("[ACCEPTOR] p2 recv instance=" + instance + " ballot=" + ballot
+				+ " value=" + value + " -> accept=" + accepted + " maxballot=" + maxballot);
+
 		DidaTradePaxos.PhaseTwoReply.Builder response_builder = DidaTradePaxos.PhaseTwoReply.newBuilder();
 		response_builder.setAccepted(accepted);
 		response_builder.setInstance(instance);
@@ -94,8 +91,6 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 		response_builder.setMaxballot(maxballot);
 
 		DidaTradePaxos.PhaseTwoReply response = response_builder.build();
-
-		// System.out.println("Sending phase2 response: " + response);
 
 		responseObserver.onNext(response);
 		responseObserver.onCompleted();
@@ -115,20 +110,14 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 
 				DidaTradePaxos.LearnRequest learn_request = learn_request_builder.build();
 
-				// System.out.println("Sending learn request: \n" + learn_request);
-
-				System.out.println("Paxos acceptor: going to notify learners for entry " + instance + " with timestamp "
-						+ ballot + " request = " + learn_request);
 				ArrayList<DidaTradePaxos.LearnReply> learn_responses = new ArrayList<DidaTradePaxos.LearnReply>();
 				GenericResponseCollector<DidaTradePaxos.LearnReply> learn_collector = new GenericResponseCollector<DidaTradePaxos.LearnReply>(
 						learn_responses, n_targets);
-				;
 				for (int i = 0; i < n_targets; i++) {
 					CollectorStreamObserver<DidaTradePaxos.LearnReply> learn_observer = new CollectorStreamObserver<DidaTradePaxos.LearnReply>(
 							learn_collector);
 					this.server_state.async_stubs[learners.get(i)].learn(learn_request, learn_observer);
 				}
-				// System.out.println("Learn request completed for instance = " + instance);
 			});
 		}
 
@@ -136,7 +125,6 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 
 	@Override
 	public void learn(DidaTradePaxos.LearnRequest request, StreamObserver<DidaTradePaxos.LearnReply> responseObserver) {
-		System.out.println("Receive learn request: \n" + request);
 		this.server_state.checkDebugState();
 
 		int instance = request.getInstance();
@@ -146,22 +134,19 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 		synchronized (this) {
 			PaxosInstance entry = this.server_state.paxos_log.testAndSetEntry(instance);
 
-			// System.out.println("Paxos learner: learnin entry " + instance + " with
-			// timestamp " + ballot);
-
 			this.server_state.setCurrentBallot(ballot);
 
 			if (ballot == entry.accept_ballot) {
 				entry.n_accepts++;
-				System.out.println("Paxos learner for instance " + instance + " : number of accepts " + entry.n_accepts);
-				if (entry.n_accepts >= this.server_state.scheduler.quorum(ballot)) {
-					System.out.println("Paxos learner: waking up the main loop");
+				if (entry.n_accepts >= this.server_state.scheduler.quorum(ballot) && !entry.decided) {
+					System.out.println("[LEARNER] instance=" + instance + " decided value=" + value
+							+ " ballot=" + ballot);
 					this.server_state.updateCompletedBallot(ballot);
 					entry.decided = true;
-					this.server_state.main_loop.wakeup();
+					this.server_state.executor.wakeup();
 				}
 			} else if (ballot > entry.accept_ballot) {
-				System.out.println("Paxos learner for instance " + instance + " : resetting ");
+				System.out.println("[LEARNER] instance=" + instance + " reset (higher ballot=" + ballot + ")");
 				entry.command_id = value;
 				entry.accept_ballot = ballot;
 				entry.n_accepts = 1;
@@ -173,8 +158,6 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 		response_builder.setBallot(ballot);
 
 		DidaTradePaxos.LearnReply response = response_builder.build();
-
-		// System.out.println("Sending learn response");
 
 		responseObserver.onNext(response);
 		responseObserver.onCompleted();

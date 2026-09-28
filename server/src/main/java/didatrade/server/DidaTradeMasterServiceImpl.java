@@ -2,7 +2,6 @@ package didatrade.server;
 
 import didatrade.DidaTradeMaster;
 import didatrade.DidaTradeMasterServiceGrpc;
-
 import io.grpc.stub.StreamObserver;
 
 public class DidaTradeMasterServiceImpl extends DidaTradeMasterServiceGrpc.DidaTradeMasterServiceImplBase {
@@ -15,24 +14,18 @@ public class DidaTradeMasterServiceImpl extends DidaTradeMasterServiceGrpc.DidaT
 	@Override
 	public void newballot(DidaTradeMaster.NewBallotRequest request,
 			StreamObserver<DidaTradeMaster.NewBallotReply> responseObserver) {
-		System.out.println(request);
-
 		int request_id = request.getReqid();
 		int new_ballot = request.getNewballot();
 		int completed_ballot = request.getCompletedballot();
-		;
 
-		// for debug purposes
-		System.out.println("Current ballot = " + this.server_state.getCurrentBallot() + " new ballot = " + new_ballot
-				+ " completed ballot = " + completed_ballot);
+		System.out.println("[CONSOLE-RPC] newballot new=" + new_ballot + " completed=" + completed_ballot
+				+ " (current=" + this.server_state.getCurrentBallot() + ")");
 
 		this.server_state.setCompletedBallot(completed_ballot);
 
 		if (new_ballot > this.server_state.getCurrentBallot()) {
 			this.server_state.setCurrentBallot(new_ballot);
-
-			this.server_state.main_loop.wakeup();
-
+			this.server_state.proposer.wakeup();
 			completed_ballot = this.server_state.waitForCompletedBallot(new_ballot);
 		} else {
 			completed_ballot = this.server_state.getCompletedBallot();
@@ -50,17 +43,11 @@ public class DidaTradeMasterServiceImpl extends DidaTradeMasterServiceGrpc.DidaT
 	@Override
 	public void activate(DidaTradeMaster.ActivateRequest request,
 			StreamObserver<DidaTradeMaster.ActivateReply> responseObserver) {
-		System.out.println(request);
-
 		int request_id = request.getReqid();
 		int completed_ballot = request.getCompletedballot();
-		;
 
-		// for debug purposes
-		System.out.println(
-				"Current ballot = " + this.server_state.getCurrentBallot() + " activated ballot = " + completed_ballot);
-
-		// do stuff
+		System.out.println("[CONSOLE-RPC] activate ballot=" + completed_ballot
+				+ " (current=" + this.server_state.getCurrentBallot() + ")");
 
 		DidaTradeMaster.ActivateReply.Builder response_builder = DidaTradeMaster.ActivateReply.newBuilder();
 		response_builder.setReqid(request_id);
@@ -74,15 +61,14 @@ public class DidaTradeMasterServiceImpl extends DidaTradeMasterServiceGrpc.DidaT
 	@Override
 	public void setdebug(DidaTradeMaster.SetDebugRequest request,
 			StreamObserver<DidaTradeMaster.SetDebugReply> responseObserver) {
-		// for debug purposes
-		System.out.println(request);
-
 		boolean response_value = true;
 		DebugMode mode = DebugMode.fromInt(request.getMode());
 
+		System.out.println("[CONSOLE-RPC] setdebug mode=" + mode);
+
 		switch (mode) {
 			case CRASH:
-				System.out.println("Exiting server due to debug mode CRASH");
+				System.out.println("[SERVER] exiting due to CRASH debug mode");
 				System.exit(1);
 				break;
 			case FREEZE:
@@ -98,12 +84,10 @@ public class DidaTradeMasterServiceImpl extends DidaTradeMasterServiceGrpc.DidaT
 				this.server_state.setDebugMode(DebugMode.NONE);
 				break;
 			default:
-				System.err.println("Ignoring invalid debug mode");
+				System.err.println("[CONSOLE-RPC] ignoring invalid debug mode");
 				response_value = false;
 				break;
 		}
-
-		System.out.println("Debug mode is now = " + this.server_state.getDebugMode());
 
 		int request_id = request.getReqid();
 
