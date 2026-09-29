@@ -62,12 +62,15 @@ public class PhaseOneResponseProcessor extends GenericResponseProcessor<DidaTrad
 
     if (last_response.getAccepted()) {
       this.acceptedCount++;
-
+      // Update the value and valballot if the last accepted response has a higher
+      // valballot
       if (last_response.getValballot() > this.valballot) {
         this.valballot = last_response.getValballot();
         this.value = last_response.getValue();
       }
     } else {
+      // Update the maxballot if the last response has a higher maxballot to know that
+      // we need to increase our ballot for the next round
       if (last_response.getMaxballot() > this.maxballot) {
         this.maxballot = last_response.getMaxballot();
       }
@@ -78,7 +81,11 @@ public class PhaseOneResponseProcessor extends GenericResponseProcessor<DidaTrad
       return true;
     }
     int remaining = this.nAcceptors - this.nResponses;
+    // If we have enough accepted responses to reach quorum, we can stop waiting for
+    // more responses
     boolean success = this.acceptedCount >= this.quorum;
+    // If it is impossible to reach quorum even if all remaining responses are
+    // accepted, we can also stop waiting for more responses
     boolean fail = (this.acceptedCount + remaining) < this.quorum;
 
     this.accepted = success;

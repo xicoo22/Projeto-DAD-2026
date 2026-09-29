@@ -26,13 +26,14 @@ public class Proposer implements Runnable {
     public void run() {
         while (true) {
             while (true) {
-                RequestRecord req = state.req_history.getFirstNotProposed();
-                int ballot = state.getCurrentBallot();
-                if (ballot >= 0 && req != null
-                        && state.scheduler.leader(ballot) == state.my_id) {
-                    break;
-                }
                 synchronized (this) {
+                    RequestRecord req = state.req_history.getFirstNotProposed();
+                    int ballot = state.getCurrentBallot();
+                    if (ballot >= 0 && req != null
+                            && state.scheduler.leader(ballot) == state.my_id) {
+                        break;
+                    }
+
                     has_work = false;
                     while (!has_work) {
                         try {
@@ -57,10 +58,18 @@ public class Proposer implements Runnable {
         }
         RequestRecord request_record = state.req_history.getFirstNotProposed();
         if (request_record == null) {
+            state.decNextInstanceToPropose();
             return;
         }
         int ballot = state.getCurrentBallot();
         int completed_ballot = state.getCompletedBallot();
+
+        // Double check that we are still the leader, so we don't have a server
+        // proposing with a ballot that is not supposed to be his.
+        if (state.scheduler.leader(ballot) != state.my_id) {
+            state.decNextInstanceToPropose();
+            return;
+        }
 
         List<Integer> acceptors = state.scheduler.acceptors(ballot);
         int quorum = state.scheduler.quorum(ballot);
@@ -68,26 +77,24 @@ public class Proposer implements Runnable {
 
         request_record.setProposed(true);
         int reqid = request_record.getId();
-        boolean ballot_aborted = false;
         int phase_two_value = reqid;
 
         // === Phase 1 ===
         if (!state.getPhase1Done()) {
             System.out.println("[PROPOSER] instance=" + entry_number + " reqid=" + reqid
                     + " ballot=" + ballot + " start");
-            DidaTradePaxos.PhaseOneRequest p1_request
-                    = DidaTradePaxos.PhaseOneRequest.newBuilder()
-                            .setInstance(entry_number)
-                            .setRequestballot(ballot)
-                            .build();
+            DidaTradePaxos.PhaseOneRequest p1_request = DidaTradePaxos.PhaseOneRequest.newBuilder()
+                    .setInstance(entry_number)
+                    .setRequestballot(ballot)
+                    .build();
 
             int low_ballot = Math.max(completed_ballot, 0);
             PhaseOneResponseProcessor p1_processor = new PhaseOneResponseProcessor(
                     state.scheduler, low_ballot, ballot, quorum, n_acceptors);
             ArrayList<DidaTradePaxos.PhaseOneReply> p1_responses = new ArrayList<>();
-            GenericResponseCollector<DidaTradePaxos.PhaseOneReply> p1_collector
-                    = new GenericResponseCollector<>(p1_responses, n_acceptors,
-                            p1_processor);
+            GenericResponseCollector<DidaTradePaxos.PhaseOneReply> p1_collector = new GenericResponseCollector<>(
+                    p1_responses, n_acceptors,
+                    p1_processor);
 
             for (int i = 0; i < n_acceptors; i++) {
                 state.async_stubs[acceptors.get(i)].phaseone(p1_request,
@@ -96,7 +103,7 @@ public class Proposer implements Runnable {
             p1_collector.waitUntilDone();
 
             if (!p1_processor.getAccepted()) {
-                ballot_aborted = true;
+                // Phase 1 failed, we need to bump our ballot and retry later
                 int maxballot = p1_processor.getMaxballot();
                 System.out.println("[PROPOSER] instance=" + entry_number + " phase1 ABORTED"
                         + " (higher ballot=" + maxballot + ")");
@@ -104,6 +111,7 @@ public class Proposer implements Runnable {
                     state.setCurrentBallot(maxballot);
                 }
                 request_record.setProposed(false);
+                state.decNextInstanceToPropose();
                 return;
 
             } else {
@@ -119,30 +127,29 @@ public class Proposer implements Runnable {
         // === Phase 2 ===
         final int fpv = phase_two_value;
 
-        DidaTradePaxos.PhaseTwoRequest p2_request
-                = DidaTradePaxos.PhaseTwoRequest.newBuilder()
-                        .setInstance(entry_number)
-                        .setRequestballot(ballot)
-                        .setValue(fpv)
-                        .build();
+        DidaTradePaxos.PhaseTwoRequest p2_request = DidaTradePaxos.PhaseTwoRequest.newBuilder()
+                .setInstance(entry_number)
+                .setRequestballot(ballot)
+                .setValue(fpv)
+                .build();
 
         for (int i = 0; i < n_acceptors; i++) {
             state.async_stubs[acceptors.get(i)].phasetwo(p2_request,
                     new io.grpc.stub.StreamObserver<DidaTradePaxos.PhaseTwoReply>() {
-                public void onNext(DidaTradePaxos.PhaseTwoReply r) {
-                    if (!r.getAccepted() && r.getMaxballot() > state.getCurrentBallot()) {
-                        System.out.println("[PROPOSER] instance=" + entry_number
-                                + " phase2 rejected, bumping ballot to " + r.getMaxballot());
-                        state.setCurrentBallot(r.getMaxballot());
-                    }
-                }
+                        public void onNext(DidaTradePaxos.PhaseTwoReply r) {
+                            if (!r.getAccepted() && r.getMaxballot() > state.getCurrentBallot()) {
+                                System.out.println("[PROPOSER] instance=" + entry_number
+                                        + " phase2 rejected, bumping ballot to " + r.getMaxballot());
+                                state.setCurrentBallot(r.getMaxballot());
+                            }
+                        }
 
-                public void onError(Throwable t) {
-                }
+                        public void onError(Throwable t) {
+                        }
 
-                public void onCompleted() {
-                }
-            });
+                        public void onCompleted() {
+                        }
+                    });
         }
 
         System.out.println("[PROPOSER] instance=" + entry_number
