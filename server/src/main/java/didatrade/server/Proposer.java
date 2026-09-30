@@ -116,15 +116,23 @@ public class Proposer implements Runnable {
 
             } else {
                 state.setPhase1Done(true);
-                if (p1_processor.getValballot() > -1) {
-                    phase_two_value = p1_processor.getValue();
-                    request_record.setProposed(false);
-                    System.out.println("[PROPOSER] instance=" + entry_number + " phase1 ok"
-                            + " (adopted prior value=" + phase_two_value + ")");
-                }
+                state.setAdoptedMap(p1_processor.getAdoptedByInstance());
+                System.out.println("[PROPOSER] instance=" + entry_number + " phase1 ok"
+                        + " (adopted map size=" + p1_processor.getAdoptedByInstance().size() + ")");
             }
         }
         // === Phase 2 ===
+
+        // Consult adopted map from prefix Phase 1
+        Integer adoptedVal = state.getAdoptedFor(entry_number);
+        if (adoptedVal != null) {
+            phase_two_value = adoptedVal;
+            request_record.setProposed(false);
+            state.clearAdopted(entry_number);
+            System.out.println("[PROPOSER] instance=" + entry_number
+                    + " using adopted value=" + adoptedVal);
+        }
+
         final int fpv = phase_two_value;
 
         DidaTradePaxos.PhaseTwoRequest p2_request = DidaTradePaxos.PhaseTwoRequest.newBuilder()
@@ -136,20 +144,20 @@ public class Proposer implements Runnable {
         for (int i = 0; i < n_acceptors; i++) {
             state.async_stubs[acceptors.get(i)].phasetwo(p2_request,
                     new io.grpc.stub.StreamObserver<DidaTradePaxos.PhaseTwoReply>() {
-                        public void onNext(DidaTradePaxos.PhaseTwoReply r) {
-                            if (!r.getAccepted() && r.getMaxballot() > state.getCurrentBallot()) {
-                                System.out.println("[PROPOSER] instance=" + entry_number
-                                        + " phase2 rejected, bumping ballot to " + r.getMaxballot());
-                                state.setCurrentBallot(r.getMaxballot());
-                            }
-                        }
+                public void onNext(DidaTradePaxos.PhaseTwoReply r) {
+                    if (!r.getAccepted() && r.getMaxballot() > state.getCurrentBallot()) {
+                        System.out.println("[PROPOSER] instance=" + entry_number
+                                + " phase2 rejected, bumping ballot to " + r.getMaxballot());
+                        state.setCurrentBallot(r.getMaxballot());
+                    }
+                }
 
-                        public void onError(Throwable t) {
-                        }
+                public void onError(Throwable t) {
+                }
 
-                        public void onCompleted() {
-                        }
-                    });
+                public void onCompleted() {
+                }
+            });
         }
 
         System.out.println("[PROPOSER] instance=" + entry_number

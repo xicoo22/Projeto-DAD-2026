@@ -1,6 +1,8 @@
 package didatrade.server;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import didatrade.DidaTradePaxosServiceGrpc;
 import didatrade.configs.ConfigurationScheduler;
@@ -32,6 +34,7 @@ public class DidaTradeServerState {
     private boolean phase1_done_for_ballot;
     private int next_instance_to_propose;
     private int next_instance_to_execute;
+    private Map<Integer, Integer> adopted_by_instance = new HashMap<>();
 
     Proposer proposer;
     Executor executor;
@@ -94,7 +97,7 @@ public class DidaTradeServerState {
         if (ballot > this.current_ballot) {
             this.current_ballot = ballot;
             this.phase1_done_for_ballot = false;
-            this.req_history.resetProposedFlags();
+            this.adopted_by_instance.clear();
         }
     }
 
@@ -209,6 +212,19 @@ public class DidaTradeServerState {
 
     public synchronized void incNextInstanceToExecute() {
         this.next_instance_to_execute++;
+    }
+
+    public synchronized Integer getAdoptedFor(int instance) {
+        return this.adopted_by_instance.get(instance);
+    }
+
+    public synchronized void setAdoptedMap(Map<Integer, Integer> m) {
+        this.adopted_by_instance.clear();
+        this.adopted_by_instance.putAll(m);
+    }
+
+    public synchronized void clearAdopted(int instance) {
+        this.adopted_by_instance.remove(instance);
     }
 
 }
