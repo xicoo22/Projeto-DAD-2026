@@ -2,117 +2,105 @@ package didatrade.server;
 
 import didatrade.DidaTradeMaster;
 import didatrade.DidaTradeMasterServiceGrpc;
-
 import io.grpc.stub.StreamObserver;
 
 public class DidaTradeMasterServiceImpl extends DidaTradeMasterServiceGrpc.DidaTradeMasterServiceImplBase {
-	DidaTradeServerState server_state;
 
-	public DidaTradeMasterServiceImpl(DidaTradeServerState state) {
-		this.server_state = state;
-	}
+    DidaTradeServerState server_state;
 
-	@Override
-	public void newballot(DidaTradeMaster.NewBallotRequest request,
-			StreamObserver<DidaTradeMaster.NewBallotReply> responseObserver) {
-		System.out.println(request);
+    public DidaTradeMasterServiceImpl(DidaTradeServerState state) {
+        this.server_state = state;
+    }
 
-		int request_id = request.getReqid();
-		int new_ballot = request.getNewballot();
-		int completed_ballot = request.getCompletedballot();
-		;
+    @Override
+    public void newballot(DidaTradeMaster.NewBallotRequest request,
+            StreamObserver<DidaTradeMaster.NewBallotReply> responseObserver) {
+        int request_id = request.getReqid();
+        int new_ballot = request.getNewballot();
+        int completed_ballot = request.getCompletedballot();
 
-		// for debug purposes
-		System.out.println("Current ballot = " + this.server_state.getCurrentBallot() + " new ballot = " + new_ballot
-				+ " completed ballot = " + completed_ballot);
+        System.out.println("[CONSOLE-RPC] newballot new=" + new_ballot + " completed=" + completed_ballot
+                + " (current=" + this.server_state.getCurrentBallot() + ")");
 
-		this.server_state.setCompletedBallot(completed_ballot);
+        this.server_state.setCompletedBallot(completed_ballot);
 
-		if (new_ballot > this.server_state.getCurrentBallot()) {
-			this.server_state.setCurrentBallot(new_ballot);
+        if (new_ballot > this.server_state.getCurrentBallot()) {
+            this.server_state.setCurrentBallot(new_ballot);
+            if (this.server_state.scheduler.leader(new_ballot) == this.server_state.my_id) {
+                this.server_state.req_history.resetProposedFlags();
+            }
+            this.server_state.proposer.wakeup();
+            completed_ballot = this.server_state.waitForCompletedBallot(new_ballot);
+        } else {
+            completed_ballot = this.server_state.getCompletedBallot();
+        }
 
-			this.server_state.main_loop.wakeup();
+        DidaTradeMaster.NewBallotReply.Builder response_builder = DidaTradeMaster.NewBallotReply.newBuilder();
+        response_builder.setReqid(request_id);
+        response_builder.setCompletedballot(completed_ballot);
 
-			completed_ballot = this.server_state.waitForCompletedBallot(new_ballot);
-		} else {
-			completed_ballot = this.server_state.getCompletedBallot();
-		}
+        DidaTradeMaster.NewBallotReply response = response_builder.build();
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
 
-		DidaTradeMaster.NewBallotReply.Builder response_builder = DidaTradeMaster.NewBallotReply.newBuilder();
-		response_builder.setReqid(request_id);
-		response_builder.setCompletedballot(completed_ballot);
+    @Override
+    public void activate(DidaTradeMaster.ActivateRequest request,
+            StreamObserver<DidaTradeMaster.ActivateReply> responseObserver) {
+        int request_id = request.getReqid();
+        int completed_ballot = request.getCompletedballot();
 
-		DidaTradeMaster.NewBallotReply response = response_builder.build();
-		responseObserver.onNext(response);
-		responseObserver.onCompleted();
-	}
+        System.out.println("[CONSOLE-RPC] activate ballot=" + completed_ballot
+                + " (current=" + this.server_state.getCurrentBallot() + ")");
 
-	@Override
-	public void activate(DidaTradeMaster.ActivateRequest request,
-			StreamObserver<DidaTradeMaster.ActivateReply> responseObserver) {
-		System.out.println(request);
+        DidaTradeMaster.ActivateReply.Builder response_builder = DidaTradeMaster.ActivateReply.newBuilder();
+        response_builder.setReqid(request_id);
+        response_builder.setAck(true);
 
-		int request_id = request.getReqid();
-		int completed_ballot = request.getCompletedballot();
-		;
+        DidaTradeMaster.ActivateReply response = response_builder.build();
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
 
-		// for debug purposes
-		System.out.println(
-				"Current ballot = " + this.server_state.getCurrentBallot() + " activated ballot = " + completed_ballot);
+    @Override
+    public void setdebug(DidaTradeMaster.SetDebugRequest request,
+            StreamObserver<DidaTradeMaster.SetDebugReply> responseObserver) {
+        boolean response_value = true;
+        DebugMode mode = DebugMode.fromInt(request.getMode());
 
-		// do stuff
+        System.out.println("[CONSOLE-RPC] setdebug mode=" + mode);
 
-		DidaTradeMaster.ActivateReply.Builder response_builder = DidaTradeMaster.ActivateReply.newBuilder();
-		response_builder.setReqid(request_id);
-		response_builder.setAck(true);
+        switch (mode) {
+            case CRASH:
+                System.out.println("[SERVER] exiting due to CRASH debug mode");
+                System.exit(1);
+                break;
+            case FREEZE:
+                this.server_state.setDebugMode(mode);
+                break;
+            case UNFREEZE:
+                this.server_state.setDebugMode(DebugMode.NONE);
+                break;
+            case SLOW_ON:
+                this.server_state.setDebugMode(mode);
+                break;
+            case SLOW_OFF:
+                this.server_state.setDebugMode(DebugMode.NONE);
+                break;
+            default:
+                System.err.println("[CONSOLE-RPC] ignoring invalid debug mode");
+                response_value = false;
+                break;
+        }
 
-		DidaTradeMaster.ActivateReply response = response_builder.build();
-		responseObserver.onNext(response);
-		responseObserver.onCompleted();
-	}
+        int request_id = request.getReqid();
 
-	@Override
-	public void setdebug(DidaTradeMaster.SetDebugRequest request,
-			StreamObserver<DidaTradeMaster.SetDebugReply> responseObserver) {
-		// for debug purposes
-		System.out.println(request);
+        DidaTradeMaster.SetDebugReply.Builder response_builder = DidaTradeMaster.SetDebugReply.newBuilder();
+        response_builder.setReqid(request_id);
+        response_builder.setAck(response_value);
 
-		boolean response_value = true;
-		DebugMode mode = DebugMode.fromInt(request.getMode());
-
-		switch (mode) {
-			case CRASH:
-				System.out.println("Exiting server due to debug mode CRASH");
-				System.exit(1);
-				break;
-			case FREEZE:
-				this.server_state.setDebugMode(mode);
-				break;
-			case UNFREEZE:
-				this.server_state.setDebugMode(DebugMode.NONE);
-				break;
-			case SLOW_ON:
-				this.server_state.setDebugMode(mode);
-				break;
-			case SLOW_OFF:
-				this.server_state.setDebugMode(DebugMode.NONE);
-				break;
-			default:
-				System.err.println("Ignoring invalid debug mode");
-				response_value = false;
-				break;
-		}
-
-		System.out.println("Debug mode is now = " + this.server_state.getDebugMode());
-
-		int request_id = request.getReqid();
-
-		DidaTradeMaster.SetDebugReply.Builder response_builder = DidaTradeMaster.SetDebugReply.newBuilder();
-		response_builder.setReqid(request_id);
-		response_builder.setAck(response_value);
-
-		DidaTradeMaster.SetDebugReply response = response_builder.build();
-		responseObserver.onNext(response);
-		responseObserver.onCompleted();
-	}
+        DidaTradeMaster.SetDebugReply response = response_builder.build();
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
 }

@@ -5,12 +5,14 @@ public class RequestRecord {
     private DidaTradeCommand request;
     private boolean response_available;
     private boolean response_value;
+    private boolean proposed;
 
     public RequestRecord(int id) {
         this.requestid = id;
         this.request = null;
         this.response_available = false;
         this.response_value = false;
+        this.proposed = false;
     }
 
     public RequestRecord(int id, DidaTradeCommand rq) {
@@ -18,6 +20,7 @@ public class RequestRecord {
         this.request = rq;
         this.response_available = false;
         this.response_value = false;
+        this.proposed = false;
     }
 
     // Getter and Setter methods for all fields
@@ -51,5 +54,13 @@ public class RequestRecord {
             }
         }
         return this.response_value;
+    }
+
+    public synchronized boolean isProposed() {
+        return this.proposed;
+    }
+
+    public synchronized void setProposed(boolean p) {
+        this.proposed = p;
     }
 }

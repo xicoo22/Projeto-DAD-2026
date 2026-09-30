@@ -1,2 +1,6 @@
 target/
 run.sh
+dev_env/
+.vscode/
+.DS_Store
+*.pdf
