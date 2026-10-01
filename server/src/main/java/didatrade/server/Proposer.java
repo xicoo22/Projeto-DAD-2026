@@ -150,6 +150,10 @@ public class Proposer implements Runnable {
                                         + " phase2 rejected, bumping ballot to " + r.getMaxballot());
                                 state.setCurrentBallot(r.getMaxballot());
                             }
+                            // Without this check, a rejected Phase 2 left the request stuck with
+                            // proposed=true forever: resetProposedFlags no longer fires here (it
+                            // only runs from the console's newballot, to avoid wiping unrelated
+                            // in-flight requests), so nothing else would ever free it again.
                             if (p2_tracker.isImpossible()) {
                                 System.out.println("[PROPOSER] instance=" + entry_number
                                         + " reqid=" + fpv + " phase2 failed, releasing for retry");
