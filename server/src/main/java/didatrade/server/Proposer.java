@@ -7,6 +7,7 @@ import didatrade.DidaTradePaxos;
 import didatrade.util.CollectorStreamObserver;
 import didatrade.util.GenericResponseCollector;
 import didatrade.util.PhaseOneResponseProcessor;
+import didatrade.util.PhaseTwoResponseProcessor;
 
 public class Proposer implements Runnable {
 
@@ -62,7 +63,6 @@ public class Proposer implements Runnable {
             return;
         }
         int ballot = state.getCurrentBallot();
-        int completed_ballot = state.getCompletedBallot();
 
         // Double check that we are still the leader, so we don't have a server
         // proposing with a ballot that is not supposed to be his.
@@ -88,9 +88,7 @@ public class Proposer implements Runnable {
                     .setRequestballot(ballot)
                     .build();
 
-            int low_ballot = Math.max(completed_ballot, 0);
-            PhaseOneResponseProcessor p1_processor = new PhaseOneResponseProcessor(
-                    state.scheduler, low_ballot, ballot, quorum, n_acceptors);
+            PhaseOneResponseProcessor p1_processor = new PhaseOneResponseProcessor(quorum, n_acceptors);
             ArrayList<DidaTradePaxos.PhaseOneReply> p1_responses = new ArrayList<>();
             GenericResponseCollector<DidaTradePaxos.PhaseOneReply> p1_collector = new GenericResponseCollector<>(
                     p1_responses, n_acceptors,
@@ -141,27 +139,34 @@ public class Proposer implements Runnable {
                 .setValue(fpv)
                 .build();
 
+        final PhaseTwoResponseProcessor p2_tracker = new PhaseTwoResponseProcessor(quorum, n_acceptors);
         for (int i = 0; i < n_acceptors; i++) {
             state.async_stubs[acceptors.get(i)].phasetwo(p2_request,
                     new io.grpc.stub.StreamObserver<DidaTradePaxos.PhaseTwoReply>() {
-                public void onNext(DidaTradePaxos.PhaseTwoReply r) {
-                    if (!r.getAccepted() && r.getMaxballot() > state.getCurrentBallot()) {
-                        System.out.println("[PROPOSER] instance=" + entry_number
-                                + " phase2 rejected, bumping ballot to " + r.getMaxballot());
-                        state.setCurrentBallot(r.getMaxballot());
-                    }
-                }
+                        public void onNext(DidaTradePaxos.PhaseTwoReply r) {
+                            p2_tracker.onResponse(r.getAccepted());
+                            if (!r.getAccepted() && r.getMaxballot() > state.getCurrentBallot()) {
+                                System.out.println("[PROPOSER] instance=" + entry_number
+                                        + " phase2 rejected, bumping ballot to " + r.getMaxballot());
+                                state.setCurrentBallot(r.getMaxballot());
+                            }
+                            if (p2_tracker.isImpossible()) {
+                                System.out.println("[PROPOSER] instance=" + entry_number
+                                        + " reqid=" + fpv + " phase2 failed, releasing for retry");
+                                request_record.setProposed(false);
+                            }
 
-                public void onError(Throwable t) {
-                }
+                        }
 
-                public void onCompleted() {
-                }
-            });
+                        public void onError(Throwable t) {
+                        }
+
+                        public void onCompleted() {
+                        }
+                    });
         }
 
-        System.out.println("[PROPOSER] instance=" + entry_number
-                + " reqid=" + fpv + " phase2 SENT (async)");
+        System.out.println("[PROPOSER] instance=" + entry_number + " reqid=" + fpv + " phase2 SENT (async)");
 
     }
 

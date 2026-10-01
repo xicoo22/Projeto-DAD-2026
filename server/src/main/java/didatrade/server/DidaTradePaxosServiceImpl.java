@@ -2,15 +2,12 @@ package didatrade.server;
 
 import java.util.*;
 
-import didatrade.DidaTradeMain;
 import didatrade.DidaTradePaxos;
 import didatrade.DidaTradePaxosServiceGrpc;
 
 import didatrade.util.GenericResponseCollector;
 import didatrade.util.CollectorStreamObserver;
 
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
 import io.grpc.Context;
 
