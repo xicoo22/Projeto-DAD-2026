@@ -75,14 +75,31 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
         PaxosInstance entry = this.server_state.paxos_log.testAndSetEntry(instance);
         boolean accepted = false;
         int maxballot = ballot;
+        int currentBallot = this.server_state.getCurrentBallot();
 
-        if (ballot >= this.server_state.getCurrentBallot()) {
+        if (entry.decided) {
+            accepted = false;
+        }
+        // Accept a higher ballot, or a retry of the same value. Never a different
+        // value at the same ballot. That's how a collision of 2 clients would silently
+        // overwrite it.
+        else if (ballot > entry.write_ballot || (ballot == entry.write_ballot && value == entry.command_id)) {
             accepted = true;
             entry.command_id = value;
             entry.write_ballot = ballot;
             this.server_state.setCurrentBallot(ballot);
+            if (value == PaxosInstance.ANY_VALUE) {
+                // Mark fast mode open only here, once ANY has actually been accepted —
+                // not when the Proposer decides to send it (scheduler.fastpaxos(ballot)
+                // is just configuration; it says nothing about whether acceptors have
+                // confirmed ANY yet). Writing it here guarantees clients are only
+                // routed to the direct path once this acceptor can truly serve them.
+                this.server_state.setFastPaxosMode(true);
+                System.out.println(
+                        "[ACCEPTOR] instance=" + instance + " accepted ANY — fast mode open for ballot=" + ballot);
+            }
         } else {
-            maxballot = this.server_state.getCurrentBallot();
+            maxballot = currentBallot;
         }
 
         System.out.println("[ACCEPTOR] p2 recv instance=" + instance + " ballot=" + ballot

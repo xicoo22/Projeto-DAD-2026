@@ -98,6 +98,7 @@ public class DidaTradeServerState {
             this.current_ballot = ballot;
             this.phase1_done_for_ballot = false;
             this.adopted_by_instance.clear();
+            this.setFastPaxosMode(false);
         }
     }
 
@@ -202,8 +203,13 @@ public class DidaTradeServerState {
         this.next_instance_to_propose++;
     }
 
-    public synchronized void decNextInstanceToPropose() {
-        this.next_instance_to_propose--;
+    // Only roll back if nobody has claimed a later instance since. It's unsafe to
+    // decrement unconditionally here, since failure is detected asynchronously
+    // and the cursor may have moved on in the meantime.
+    public synchronized void decInstanceIfUnused(int instance) {
+        if (this.next_instance_to_propose == instance + 1) {
+            this.next_instance_to_propose--;
+        }
     }
 
     public synchronized int getNextInstanceToExecute() {
@@ -225,6 +231,16 @@ public class DidaTradeServerState {
 
     public synchronized void clearAdopted(int instance) {
         this.adopted_by_instance.remove(instance);
+    }
+
+    // Atomic read-and-advance: with both the Proposer and the client's direct
+    // fast path now claiming instances from this same cursor, a separate
+    // get() followed by inc() would let two threads read the same value before
+    // either one advances it.
+    public synchronized int getAndIncNextInstanceToPropose() {
+        int n = this.getNextInstanceToPropose();
+        this.incNextInstanceToPropose();
+        return n;
     }
 
 }

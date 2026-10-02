@@ -12,15 +12,12 @@ import didatrade.util.PhaseTwoResponseProcessor;
 public class Proposer implements Runnable {
 
     DidaTradeServerState state;
-    private boolean has_work;
 
     public Proposer(DidaTradeServerState s) {
         this.state = s;
-        this.has_work = false;
     }
 
     public synchronized void wakeup() {
-        this.has_work = true;
         notify();
     }
 
@@ -28,26 +25,21 @@ public class Proposer implements Runnable {
         while (true) {
             while (true) {
                 synchronized (this) {
-                    RequestRecord req = state.req_history.getFirstNotProposed();
                     int ballot = state.getCurrentBallot();
-                    if (ballot >= 0 && req != null
-                            && state.scheduler.leader(ballot) == state.my_id) {
+                    if (ballot >= 0 && state.scheduler.leader(ballot) == state.my_id && hasWorkToDo(ballot)) {
                         break;
                     }
 
-                    has_work = false;
-                    while (!has_work) {
-                        try {
-                            wait();
-                        } catch (InterruptedException e) {
-                        }
+                    try {
+                        wait();
+                    } catch (InterruptedException e) {
                     }
+
                 }
             }
 
-            int n = state.getNextInstanceToPropose();
+            int n = state.getAndIncNextInstanceToPropose();
             proposeInstance(n);
-            state.incNextInstanceToPropose();
         }
     }
 
@@ -57,17 +49,12 @@ public class Proposer implements Runnable {
         if (next_entry.decided) {
             return;
         }
-        RequestRecord request_record = state.req_history.getFirstNotProposed();
-        if (request_record == null) {
-            state.decNextInstanceToPropose();
-            return;
-        }
         int ballot = state.getCurrentBallot();
 
         // Double check that we are still the leader, so we don't have a server
         // proposing with a ballot that is not supposed to be his.
         if (state.scheduler.leader(ballot) != state.my_id) {
-            state.decNextInstanceToPropose();
+            state.decInstanceIfUnused(entry_number);
             return;
         }
 
@@ -75,14 +62,9 @@ public class Proposer implements Runnable {
         int quorum = state.scheduler.quorum(ballot);
         int n_acceptors = acceptors.size();
 
-        request_record.setProposed(true);
-        int reqid = request_record.getId();
-        int phase_two_value = reqid;
-
-        // === Phase 1 ===
+        // Phase 1: Runs even without a pending client request
         if (!state.getPhase1Done()) {
-            System.out.println("[PROPOSER] instance=" + entry_number + " reqid=" + reqid
-                    + " ballot=" + ballot + " start");
+            System.out.println("[PROPOSER] instance=" + entry_number + " ballot=" + ballot + "phase1 start");
             DidaTradePaxos.PhaseOneRequest p1_request = DidaTradePaxos.PhaseOneRequest.newBuilder()
                     .setInstance(entry_number)
                     .setRequestballot(ballot)
@@ -91,8 +73,7 @@ public class Proposer implements Runnable {
             PhaseOneResponseProcessor p1_processor = new PhaseOneResponseProcessor(quorum, n_acceptors);
             ArrayList<DidaTradePaxos.PhaseOneReply> p1_responses = new ArrayList<>();
             GenericResponseCollector<DidaTradePaxos.PhaseOneReply> p1_collector = new GenericResponseCollector<>(
-                    p1_responses, n_acceptors,
-                    p1_processor);
+                    p1_responses, n_acceptors, p1_processor);
 
             for (int i = 0; i < n_acceptors; i++) {
                 state.async_stubs[acceptors.get(i)].phaseone(p1_request,
@@ -108,15 +89,30 @@ public class Proposer implements Runnable {
                 if (maxballot > state.getCurrentBallot()) {
                     state.setCurrentBallot(maxballot);
                 }
-                request_record.setProposed(false);
-                state.decNextInstanceToPropose();
+                state.decInstanceIfUnused(entry_number);
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException e) {
+                }
                 return;
 
             } else {
                 state.setPhase1Done(true);
                 state.setAdoptedMap(p1_processor.getAdoptedByInstance());
-                System.out.println("[PROPOSER] instance=" + entry_number + " phase1 ok"
-                        + " (adopted map size=" + p1_processor.getAdoptedByInstance().size() + ")");
+                // No record here. this is ANY or an adopted value, not a real client request
+                Integer adoptedVal = state.getAdoptedFor(entry_number);
+                if (adoptedVal != null) {
+                    state.clearAdopted(entry_number);
+                    System.out.println("[PROPOSER] instance=" + entry_number + " using adopted value=" + adoptedVal);
+                    sendPhaseTwo(entry_number, ballot, adoptedVal, acceptors, quorum, n_acceptors, null);
+                    return;
+                }
+
+                if (state.scheduler.fastpaxos(ballot)) {
+                    System.out.println("[PROPOSER] instance=" + entry_number + " fast paxos ballot — proposing ANY");
+                    sendPhaseTwo(entry_number, ballot, PaxosInstance.ANY_VALUE, acceptors, quorum, n_acceptors, null);
+                    return;
+                }
             }
         }
         // === Phase 2 ===
@@ -124,19 +120,34 @@ public class Proposer implements Runnable {
         // Consult adopted map from prefix Phase 1
         Integer adoptedVal = state.getAdoptedFor(entry_number);
         if (adoptedVal != null) {
-            phase_two_value = adoptedVal;
-            request_record.setProposed(false);
             state.clearAdopted(entry_number);
+            // Same as above: no real request behind an adopted value.
+            this.sendPhaseTwo(entry_number, ballot, adoptedVal, acceptors, quorum, n_acceptors, null);
+
             System.out.println("[PROPOSER] instance=" + entry_number
                     + " using adopted value=" + adoptedVal);
+            return;
         }
 
-        final int fpv = phase_two_value;
+        // Finally, if we have a pending client request, propose it. Otherwise, release
+        // the reserved instance,we have nothing to do.
+        RequestRecord request_record = state.req_history.getFirstNotProposed();
+        if (request_record == null) {
+            state.decInstanceIfUnused(entry_number);
+            return;
+        }
+        request_record.setProposed(true);
+        int reqid = request_record.getId();
+        sendPhaseTwo(entry_number, ballot, reqid, acceptors, quorum, n_acceptors, request_record);
+    }
+
+    private void sendPhaseTwo(int entry_number, int ballot, int value, List<Integer> acceptors,
+            int quorum, int n_acceptors, RequestRecord request_record) {
 
         DidaTradePaxos.PhaseTwoRequest p2_request = DidaTradePaxos.PhaseTwoRequest.newBuilder()
                 .setInstance(entry_number)
                 .setRequestballot(ballot)
-                .setValue(fpv)
+                .setValue(value)
                 .build();
 
         final PhaseTwoResponseProcessor p2_tracker = new PhaseTwoResponseProcessor(quorum, n_acceptors);
@@ -154,9 +165,9 @@ public class Proposer implements Runnable {
                             // proposed=true forever: resetProposedFlags no longer fires here (it
                             // only runs from the console's newballot, to avoid wiping unrelated
                             // in-flight requests), so nothing else would ever free it again.
-                            if (p2_tracker.isImpossible()) {
+                            if (p2_tracker.isImpossible() && request_record != null) {
                                 System.out.println("[PROPOSER] instance=" + entry_number
-                                        + " reqid=" + fpv + " phase2 failed, releasing for retry");
+                                        + " reqid=" + value + " phase2 failed, releasing for retry");
                                 request_record.setProposed(false);
                             }
 
@@ -170,8 +181,14 @@ public class Proposer implements Runnable {
                     });
         }
 
-        System.out.println("[PROPOSER] instance=" + entry_number + " reqid=" + fpv + " phase2 SENT (async)");
+        System.out.println("[PROPOSER] instance=" + entry_number + " reqid=" + value + " phase2 SENT (async)");
 
+    }
+
+    // If Phase 1 is not done, we have to do it anyway, even if there are no pending
+    // requests
+    private boolean hasWorkToDo(int ballot) {
+        return !state.getPhase1Done() || state.req_history.getFirstNotProposed() != null;
     }
 
 }
