@@ -1,5 +1,5 @@
 target/
-run.sh
+run_scripts/
 dev_env/
 .vscode/
 .DS_Store

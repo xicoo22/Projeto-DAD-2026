@@ -5,29 +5,22 @@ import java.util.HashMap;
 import java.util.Map;
 
 import didatrade.DidaTradePaxos;
-import didatrade.configs.ConfigurationScheduler;
 
 public class PhaseOneResponseProcessor extends GenericResponseProcessor<DidaTradePaxos.PhaseOneReply> {
 
-    private ConfigurationScheduler scheduler;
     private boolean accepted;
     private int maxballot;
     private int acceptedCount;
-    private int low_ballot;
-    private int high_ballot;
     private int quorum;
     private int nAcceptors;
     private int nResponses;
     private Map<Integer, int[]> adopted;
 
-    public PhaseOneResponseProcessor(ConfigurationScheduler s, int l, int h, int quorum, int nAcceptors) {
+    public PhaseOneResponseProcessor(int quorum, int nAcceptors) {
         // System.out.println("Phase 1 processor constructor with low_ballot =" + l + "
         // high_ballot = " + h);
         this.accepted = false;
         this.maxballot = -1;
-        this.low_ballot = l;
-        this.high_ballot = h;
-        this.scheduler = s;
         this.acceptedCount = 0;
         this.quorum = quorum;
         this.nAcceptors = nAcceptors;
@@ -63,19 +56,29 @@ public class PhaseOneResponseProcessor extends GenericResponseProcessor<DidaTrad
                 int inst = ae.getInstance();
                 int[] cur = this.adopted.get(inst);
                 if (cur == null || ae.getValballot() > cur[1]) {
-                    this.adopted.put(inst, new int[]{ae.getValue(), ae.getValballot()});
+                    this.adopted.put(inst, new int[] { ae.getValue(), ae.getValballot() });
                 }
             }
 
         } else {
+            // Update the maxballot if the last response has a higher maxballot to know that
+            // we need to increase our ballot for the next round
             if (last_response.getMaxballot() > this.maxballot) {
                 this.maxballot = last_response.getMaxballot();
             }
+            // Possible otimization: if we know an acceptor already saw an higher ballot,
+            // there is no need to wait for the rest because even if we succed it will get
+            // replaced by the other and we dont need to wait.
             this.accepted = false;
             return true;
         }
         int remaining = this.nAcceptors - this.nResponses;
+
+        // If we have enough accepted responses to reach quorum, we can stop waiting for
+        // more responses
         boolean success = this.acceptedCount >= this.quorum;
+        // If it is impossible to reach quorum even if all remaining responses are
+        // accepted, we can also stop waiting for more responses
         boolean fail = (this.acceptedCount + remaining) < this.quorum;
 
         this.accepted = success;
