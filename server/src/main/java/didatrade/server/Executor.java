@@ -11,12 +11,12 @@ public class Executor implements Runnable {
         notify();
     }
 
-      public void run() {
-          while (true) {
-              int n = state.getNextInstanceToExecute();
-              executeEntry(n);
-          }
-      }
+    public void run() {
+        while (true) {
+            int n = state.getNextInstanceToExecute();
+            executeEntry(n);
+        }
+    }
 
     private void executeEntry(int entry_number) {
         PaxosInstance entry = state.paxos_log.testAndSetEntry(entry_number);
@@ -94,6 +94,9 @@ public class Executor implements Runnable {
 
         System.out.println("[EXECUTOR] instance=" + entry_number + " apply " + action
                 + " reqid=" + entry.command_id + " -> result=" + result);
+        
+        request_record.setSlot(entry_number);
+        state.incNextInstanceToExecute();
         request_record.setResponse(result);
         state.req_history.moveToProcessed(request_record.getId());
     }
