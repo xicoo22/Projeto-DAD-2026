@@ -4,9 +4,6 @@ import io.grpc.BindableService;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 
-import didatrade.DidaTradeMain;
-import didatrade.DidaTradeMainServiceGrpc;
-
 public class DidaTradeServer {
 
 	static DidaTradeServerState server_state;
