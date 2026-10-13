@@ -210,8 +210,13 @@ public class DidaTradeServerState {
         return this.next_instance_to_execute;
     }
 
+    public synchronized int getAppliedSlot() {
+        return this.next_instance_to_execute - 1;
+    }
+
     public synchronized void incNextInstanceToExecute() {
         this.next_instance_to_execute++;
+        this.notifyAll();
     }
 
     public synchronized Integer getAdoptedFor(int instance) {
@@ -227,4 +232,13 @@ public class DidaTradeServerState {
         this.adopted_by_instance.remove(instance);
     }
 
+    public synchronized int waitForMinSlot(int minSlot) {
+        while (this.getAppliedSlot() < minSlot) {
+            try {
+                wait();
+            } catch (InterruptedException e) {}
+        }
+    
+        return getAppliedSlot();
+    }
 }

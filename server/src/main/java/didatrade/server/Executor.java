@@ -18,7 +18,6 @@ package didatrade.server;
           while (true) {
               int n = state.getNextInstanceToExecute();
               executeEntry(n);
-              state.incNextInstanceToExecute();
           }
       }
 
@@ -68,7 +67,7 @@ package didatrade.server;
               case BUY:
                   result = state.trade_manager.acquire(command.getUserId(), command.getQuantity());
                   break;
-              case BALANCE:
+              case BALANCE: // afet phase 4 this case is obsolete
                   balance = state.trade_manager.balance(command.getUserId());
                   command.setQuantity(balance);
                   result = (balance != -1);
@@ -85,6 +84,9 @@ package didatrade.server;
 
           System.out.println("[EXECUTOR] instance=" + entry_number + " apply " + action
                   + " reqid=" + entry.command_id + " -> result=" + result);
+          
+          request_record.setSlot(entry_number);
+          state.incNextInstanceToExecute();
           request_record.setResponse(result);
           state.req_history.moveToProcessed(request_record.getId());
       }

@@ -35,6 +35,7 @@ public class DidaTradeApp {
 	private DidaTradeMainServiceGrpc.DidaTradeMainServiceStub[] async_stubs;
 	private char schedule;
 	private ConfigurationScheduler scheduler;
+	private int last_seen_slot;
 
 	public DidaTradeApp() {
 		this.interactive_mode = true;
@@ -53,8 +54,14 @@ public class DidaTradeApp {
 		this.targets = new String[n_servers];
 		this.schedule = 'A';
 		this.scheduler = null;
+		this.last_seen_slot = -1;
 	}
 
+	private void updateSlot(int slot) {
+		if (slot > this.last_seen_slot)
+			this.last_seen_slot = slot;
+	}
+	
 	private boolean populate(int quantity) {
 		this.sequence_number = this.sequence_number + 1;
 		int reqid = this.sequence_number * 100 + client_id;
@@ -77,6 +84,7 @@ public class DidaTradeApp {
 		if (populate_responses.size() >= responses_needed) {
 			Iterator<DidaTradeMain.PopulateReply> populate_iterator = populate_responses.iterator();
 			DidaTradeMain.PopulateReply populate_reply = populate_iterator.next();
+			updateSlot(populate_reply.getSlot());
 			result = populate_reply.getResult();
 			if (result) {
 				System.out.println("User DB has been populated with " + quantity + "users.\n");
@@ -113,6 +121,7 @@ public class DidaTradeApp {
 		if (adduser_responses.size() >= responses_needed) {
 			Iterator<DidaTradeMain.AddUserReply> adduser_iterator = adduser_responses.iterator();
 			DidaTradeMain.AddUserReply adduser_reply = adduser_iterator.next();
+			updateSlot(adduser_reply.getSlot());
 			result = adduser_reply.getResult();
 			if (result) {
 				System.out.println("User " + uid + " added with cash " + cash + "and stock" + stock + "% of stock\n");
@@ -120,7 +129,7 @@ public class DidaTradeApp {
 				System.out.println("Adduser operation failed\n");
 			}
 		} else
-			System.out.println("Panic...error in sell operation\n");
+			System.out.println("Panic...error in adduser operation\n");
 
 		return result;
 	}
@@ -148,6 +157,7 @@ public class DidaTradeApp {
 		if (sell_responses.size() >= responses_needed) {
 			Iterator<DidaTradeMain.SellReply> sell_iterator = sell_responses.iterator();
 			DidaTradeMain.SellReply sell_reply = sell_iterator.next();
+			updateSlot(sell_reply.getSlot());
 			result = sell_reply.getResult();
 			if (result) {
 				System.out.println("User " + uid + " did sell " + quantity + "% of stock\n");
@@ -183,6 +193,7 @@ public class DidaTradeApp {
 		if (buy_responses.size() >= responses_needed) {
 			Iterator<DidaTradeMain.BuyReply> buy_iterator = buy_responses.iterator();
 			DidaTradeMain.BuyReply buy_reply = buy_iterator.next();
+			updateSlot(buy_reply.getSlot());
 			result = buy_reply.getResult();
 			if (result) {
 				System.out.println("User " + uid + " did spend " + quantity + "% of balance\n");
@@ -204,6 +215,7 @@ public class DidaTradeApp {
 		DidaTradeMain.BalanceRequest.Builder balance_request = DidaTradeMain.BalanceRequest.newBuilder();
 		balance_request.setReqid(reqid);
 		balance_request.setUserid(uid);
+		balance_request.setMinSlot(last_seen_slot);
 
 		ArrayList<DidaTradeMain.BalanceReply> balance_responses = new ArrayList<DidaTradeMain.BalanceReply>();
 		GenericResponseCollector<DidaTradeMain.BalanceReply> balance_collector = new GenericResponseCollector<DidaTradeMain.BalanceReply>(
@@ -218,6 +230,7 @@ public class DidaTradeApp {
 		if (balance_responses.size() >= responses_needed) {
 			Iterator<DidaTradeMain.BalanceReply> balance_iterator = balance_responses.iterator();
 			DidaTradeMain.BalanceReply balance_reply = balance_iterator.next();
+			updateSlot(balance_reply.getAppliedSlot());
 			result = balance_reply.getResult();
 			if (result) {
 				balance = balance_reply.getBalance();
