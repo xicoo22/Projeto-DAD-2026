@@ -11,22 +11,12 @@ public class Executor implements Runnable {
         notify();
     }
 
-<<<<<<< HEAD
       public void run() {
           while (true) {
               int n = state.getNextInstanceToExecute();
               executeEntry(n);
           }
       }
-=======
-    public void run() {
-        while (true) {
-            int n = state.getNextInstanceToExecute();
-            executeEntry(n);
-            state.incNextInstanceToExecute();
-        }
-    }
->>>>>>> origin/main
 
     private void executeEntry(int entry_number) {
         PaxosInstance entry = state.paxos_log.testAndSetEntry(entry_number);
