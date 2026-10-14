@@ -34,6 +34,7 @@ public class Executor implements Runnable {
         // a real client request.
         if (entry.command_id == PaxosInstance.ANY_VALUE) {
             System.out.println("[EXECUTOR] instance=" + entry_number + " skipping ANY (fast-paxos open marker)");
+            state.incNextInstanceToExecute();
             return;
         }
 
