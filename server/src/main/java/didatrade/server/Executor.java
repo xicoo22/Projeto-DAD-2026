@@ -15,7 +15,6 @@ public class Executor implements Runnable {
         while (true) {
             int n = state.getNextInstanceToExecute();
             executeEntry(n);
-            state.incNextInstanceToExecute();
         }
     }
 
@@ -78,7 +77,7 @@ public class Executor implements Runnable {
             case BUY:
                 result = state.trade_manager.acquire(command.getUserId(), command.getQuantity());
                 break;
-            case BALANCE:
+            case BALANCE:   // case obsolete after step4
                 balance = state.trade_manager.balance(command.getUserId());
                 command.setQuantity(balance);
                 result = (balance != -1);
@@ -95,6 +94,9 @@ public class Executor implements Runnable {
 
         System.out.println("[EXECUTOR] instance=" + entry_number + " apply " + action
                 + " reqid=" + entry.command_id + " -> result=" + result);
+        
+        request_record.setSlot(entry_number);
+        state.incNextInstanceToExecute();
         request_record.setResponse(result);
         state.req_history.moveToProcessed(request_record.getId());
     }

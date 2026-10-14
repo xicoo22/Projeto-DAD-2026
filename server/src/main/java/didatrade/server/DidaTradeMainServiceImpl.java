@@ -33,10 +33,11 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		this.decideRequestPath(reqid, request_record);
 
 		boolean result = request_record.waitForResponse();
+		int slot = request_record.getSlot();
 
-		System.out.println("[CLIENT-RPC] populate reqid=" + reqid + " -> result=" + result);
+		System.out.println("[CLIENT-RPC] populate reqid=" + reqid + " -> result=" + result + " slot=" + slot);
 
-		DidaTradeMain.PopulateReply response = DidaTradeMain.PopulateReply.newBuilder().setReqid(reqid).setResult(result)
+		DidaTradeMain.PopulateReply response = DidaTradeMain.PopulateReply.newBuilder().setReqid(reqid).setResult(result).setSlot(slot)
 				.build();
 		responseObserver.onNext(response);
 		responseObserver.onCompleted();
@@ -60,10 +61,11 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		this.decideRequestPath(reqid, request_record);
 
 		boolean result = request_record.waitForResponse();
+		int slot = request_record.getSlot();
 
-		System.out.println("[CLIENT-RPC] adduser reqid=" + reqid + " -> result=" + result);
+		System.out.println("[CLIENT-RPC] adduser reqid=" + reqid + " -> result=" + result + " slot=" + slot);
 
-		DidaTradeMain.AddUserReply response = DidaTradeMain.AddUserReply.newBuilder().setReqid(reqid).setResult(result)
+		DidaTradeMain.AddUserReply response = DidaTradeMain.AddUserReply.newBuilder().setReqid(reqid).setResult(result).setSlot(slot)
 				.build();
 
 		responseObserver.onNext(response);
@@ -85,10 +87,11 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		this.decideRequestPath(reqid, request_record);
 
 		boolean result = request_record.waitForResponse();
+		int slot = request_record.getSlot();
 
-		System.out.println("[CLIENT-RPC] buy reqid=" + reqid + " -> result=" + result);
+		System.out.println("[CLIENT-RPC] buy reqid=" + reqid + " -> result=" + result + " slot=" + slot);
 
-		DidaTradeMain.BuyReply response = DidaTradeMain.BuyReply.newBuilder().setReqid(reqid).setResult(result).build();
+		DidaTradeMain.BuyReply response = DidaTradeMain.BuyReply.newBuilder().setReqid(reqid).setResult(result).setSlot(slot).build();
 
 		responseObserver.onNext(response);
 		responseObserver.onCompleted();
@@ -110,10 +113,11 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		this.decideRequestPath(reqid, request_record);
 
 		boolean result = request_record.waitForResponse();
+		int slot = request_record.getSlot();
 
-		System.out.println("[CLIENT-RPC] sell reqid=" + reqid + " -> result=" + result);
+		System.out.println("[CLIENT-RPC] sell reqid=" + reqid + " -> result=" + result + " slot=" + slot);
 
-		DidaTradeMain.SellReply response = DidaTradeMain.SellReply.newBuilder().setReqid(reqid).setResult(result).build();
+		DidaTradeMain.SellReply response = DidaTradeMain.SellReply.newBuilder().setReqid(reqid).setResult(result).setSlot(slot).build();
 
 		responseObserver.onNext(response);
 		responseObserver.onCompleted();
@@ -126,21 +130,18 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 
 		int reqid = request.getReqid();
 		int uid = request.getUserid();
+		int min_slot = request.getMinSlot();
 
-		System.out.println("[CLIENT-RPC] balance reqid=" + reqid + " uid=" + uid);
+		System.out.println("[CLIENT-RPC] balance reqid=" + reqid + " uid=" + uid + " minSlot=" + min_slot);
 
-		DidaTradeCommand command = new DidaTradeCommand(DidaTradeAction.BALANCE, uid);
-		RequestRecord request_record = new RequestRecord(reqid, command);
+		int applied_slot = this.server_state.waitForMinSlot(min_slot);
+		int balance = this.server_state.trade_manager.balance(uid);
+    	boolean result = (balance != -1);
 
-		this.decideRequestPath(reqid, request_record);
-
-		boolean result = request_record.waitForResponse();
-
-		int balance = command.getQuantity();
-		System.out.println("[CLIENT-RPC] balance reqid=" + reqid + " -> result=" + result + " balance=" + balance);
+		System.out.println("[CLIENT-RPC] balance reqid=" + reqid + " -> result=" + result + " balance=" + balance + " appliedSlot=" + applied_slot);
 
 		DidaTradeMain.BalanceReply response = DidaTradeMain.BalanceReply.newBuilder().setReqid(reqid).setResult(result)
-				.setBalance(balance).build();
+				.setBalance(balance).setAppliedSlot(applied_slot).build();
 
 		responseObserver.onNext(response);
 		responseObserver.onCompleted();

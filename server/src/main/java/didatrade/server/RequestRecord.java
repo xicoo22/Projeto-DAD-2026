@@ -6,6 +6,7 @@ public class RequestRecord {
     private boolean response_available;
     private boolean response_value;
     private boolean proposed;
+    private int slot;
 
     public RequestRecord(int id) {
         this.requestid = id;
@@ -13,6 +14,7 @@ public class RequestRecord {
         this.response_available = false;
         this.response_value = false;
         this.proposed = false;
+        this.slot = -1;
     }
 
     public RequestRecord(int id, DidaTradeCommand rq) {
@@ -62,5 +64,13 @@ public class RequestRecord {
 
     public synchronized void setProposed(boolean p) {
         this.proposed = p;
+    }
+
+    public void setSlot(int slot) {
+        this.slot = slot;
+    }
+
+    public int getSlot() {
+        return this.slot;
     }
 }
