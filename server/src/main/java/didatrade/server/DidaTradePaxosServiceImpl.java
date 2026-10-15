@@ -77,13 +77,19 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
         int maxballot = ballot;
         int currentBallot = this.server_state.getCurrentBallot();
 
-        if (entry.decided) {
-            accepted = false;
-        }
+        String reason = null;
+        
+        if (!this.server_state.scheduler.isacceptor(this.server_state.my_id, ballot)) {
+            reason = "not an acceptor in this ballot";
+        } else if (ballot < currentBallot) {
+            reason = "ballot below promise";
+        } else if (entry.decided && value != entry.command_id) {
+            reason = "decided with another value";
+         
         // Accept a higher ballot, or a retry of the same value. Never a different
         // value at the same ballot. That's how a collision of 2 clients would silently
         // overwrite it.
-        else if (ballot > entry.write_ballot || (ballot == entry.write_ballot && value == entry.command_id)) {
+        } else if (ballot > entry.write_ballot || (ballot == entry.write_ballot && value == entry.command_id)) {
             accepted = true;
             entry.command_id = value;
             entry.write_ballot = ballot;
@@ -99,9 +105,14 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
                         "[ACCEPTOR] instance=" + instance + " accepted ANY — fast mode open for ballot=" + ballot);
             }
         } else {
-            maxballot = currentBallot;
+            reason = "already accepted at a higher ballot";
         }
 
+        if (reason != null) {
+            maxballot = currentBallot;
+            System.out.println("[ACCEPTOR] p2 reject instance=" + instance + " ballot=" + ballot + " reason=" + reason);
+        }
+        
         System.out.println("[ACCEPTOR] p2 recv instance=" + instance + " ballot=" + ballot
                 + " value=" + value + " -> accept=" + accepted + " maxballot=" + maxballot);
 
