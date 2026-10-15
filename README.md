@@ -109,6 +109,69 @@ commands are available:
 - `debug mode replica_id` - Activates debug on a given replica;
 - `exit` - Gracefully finishes the console.
 
+## Quick launch with `dida.sh` (tmux)
+
+Instead of opening one terminal per process, the script `dida.sh` (in the root directory) builds the project and
+starts all servers, the clients and the console inside a single tmux session. It runs exactly the commands described
+above, one per pane.
+
+Before using it:
+
+- install `tmux`;
+- make sure `contract/pom.xml` exists (see the compilation warning above);
+- if you use `setup_env.sh`, run `source INSTALL_DIR/env.sh` in the terminal where you start the script;
+- make the script executable once: `chmod +x dida.sh`.
+
+### Usage
+
+```
+./dida.sh [options] <A|B|C>
+./dida.sh stop
+```
+
+| Option              | Meaning                                                         |
+|---------------------|-----------------------------------------------------------------|
+| `<A\|B\|C>`         | schedule to run (3 servers for A and B, 7 servers for C)        |
+| `-c N`, `--clients` | number of clients to start (default 1, ids 1 to N)              |
+| `-k 0\|1`, `--console` | start the console (default 1)                                |
+| `-p PORT`, `--port` | base port of server 0 (default 58000)                           |
+| `-n`, `--no-build`  | skip the Maven build (use it when nothing changed since the last run) |
+| `-l`, `--log`       | also save the output of every pane in `logs/` (one file per process) |
+| `-d`, `--detach`    | create the session but do not attach to it                      |
+| `stop`              | kill the session and every process in it                        |
+
+Examples:
+
+```
+./dida.sh A                 # 3 servers, 1 client, 1 console
+./dida.sh C -c 2            # 7 servers, 2 clients, 1 console
+./dida.sh B -k 0 -n -l      # no console, no build, logs saved in logs/
+./dida.sh stop              # stop everything
+```
+
+### What you get
+
+The script creates one tmux session called `dida` with two windows:
+
+- **servers**: one pane per server (S0, S1, ...), tiled. This is only for watching the logs.
+- **clients** (opens first): the console in the large left pane and the clients stacked on the right. This is where
+  you type commands.
+
+Servers 1 to N-1 are started first and server 0 (the leader of ballot 0) is started last, once all the others accept
+connections. The console and the clients start after that.
+
+Useful tmux keys (all start with `Ctrl-b`, then release and press the key):
+
+| Keys         | Action                                                 |
+|--------------|--------------------------------------------------------|
+| `n` / `p`    | next / previous window (servers / clients)             |
+| `z`          | zoom the current pane to full screen (press again to restore) |
+| `d`          | detach and leave everything running (`tmux attach -t dida` to come back) |
+| mouse click  | select a pane (the mouse is enabled)                   |
+
+Panes stay open after a process exits, so you can still read its output. Running the script again replaces the
+previous session. Add `logs/` to `.gitignore` if you use `-l`.
+
 ## Protobuffs and Utils
 
 To support these modules, the project has additional directories:
