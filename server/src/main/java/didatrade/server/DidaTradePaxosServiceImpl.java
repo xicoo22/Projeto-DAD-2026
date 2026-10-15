@@ -96,7 +96,7 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
                 entry.command_id = value;
                 entry.write_ballot = ballot;
                 this.server_state.setCurrentBallot(ballot);
-                if (value == PaxosInstance.ANY_VALUE) {
+                if (value == PaxosInstance.ANY_VALUE && this.server_state.scheduler.fastpaxos(ballot)) {
                     // Mark fast mode open only here, once ANY has actually been accepted —
                     // not when the Proposer decides to send it (scheduler.fastpaxos(ballot)
                     // is just configuration; it says nothing about whether acceptors have

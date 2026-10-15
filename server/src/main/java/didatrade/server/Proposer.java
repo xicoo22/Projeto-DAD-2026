@@ -34,7 +34,6 @@ public class Proposer implements Runnable {
                         wait();
                     } catch (InterruptedException e) {
                     }
-
                 }
             }
 
@@ -64,58 +63,10 @@ public class Proposer implements Runnable {
 
         // Phase 1: Runs even without a pending client request
         if (!state.getPhase1Done()) {
-            System.out.println("[PROPOSER] instance=" + entry_number + " ballot=" + ballot + "phase1 start");
-            DidaTradePaxos.PhaseOneRequest p1_request = DidaTradePaxos.PhaseOneRequest.newBuilder()
-                    .setInstance(entry_number)
-                    .setRequestballot(ballot)
-                    .build();
-
-            PhaseOneResponseProcessor p1_processor = new PhaseOneResponseProcessor(quorum, n_acceptors);
-            ArrayList<DidaTradePaxos.PhaseOneReply> p1_responses = new ArrayList<>();
-            GenericResponseCollector<DidaTradePaxos.PhaseOneReply> p1_collector = new GenericResponseCollector<>(
-                    p1_responses, n_acceptors, p1_processor);
-
-            for (int i = 0; i < n_acceptors; i++) {
-                state.async_stubs[acceptors.get(i)].phaseone(p1_request,
-                        new CollectorStreamObserver<>(p1_collector));
-            }
-            p1_collector.waitUntilDone();
-
-            if (!p1_processor.getAccepted()) {
-                // Phase 1 failed, we need to bump our ballot and retry later
-                int maxballot = p1_processor.getMaxballot();
-                System.out.println("[PROPOSER] instance=" + entry_number + " phase1 ABORTED"
-                        + " (higher ballot=" + maxballot + ")");
-                if (maxballot > state.getCurrentBallot()) {
-                    state.setCurrentBallot(maxballot);
-                }
-                state.decInstanceIfUnused(entry_number);
-                try {
-                    Thread.sleep(200);
-                } catch (InterruptedException e) {
-                }
+            if (!sendPhaseOne(entry_number, ballot, acceptors, quorum, n_acceptors)) {
                 return;
-
-            } else {
-                state.setPhase1Done(true);
-                state.setAdoptedMap(p1_processor.getAdoptedByInstance());
-                // No record here. this is ANY or an adopted value, not a real client request
-                Integer adoptedVal = state.getAdoptedFor(entry_number);
-                if (adoptedVal != null) {
-                    state.clearAdopted(entry_number);
-                    System.out.println("[PROPOSER] instance=" + entry_number + " using adopted value=" + adoptedVal);
-                    sendPhaseTwo(entry_number, ballot, adoptedVal, acceptors, quorum, n_acceptors, null);
-                    return;
-                }
-
-                if (state.scheduler.fastpaxos(ballot)) {
-                    System.out.println("[PROPOSER] instance=" + entry_number + " fast paxos ballot — proposing ANY");
-                    sendPhaseTwo(entry_number, ballot, PaxosInstance.ANY_VALUE, acceptors, quorum, n_acceptors, null);
-                    return;
-                }
             }
         }
-        // === Phase 2 ===
 
         // Consult adopted map from prefix Phase 1
         Integer adoptedVal = state.getAdoptedFor(entry_number);
@@ -139,6 +90,87 @@ public class Proposer implements Runnable {
         request_record.setProposed(true);
         int reqid = request_record.getId();
         sendPhaseTwo(entry_number, ballot, reqid, acceptors, quorum, n_acceptors, request_record);
+    }
+
+    // Returns true if the caller should go on with phase 2 in this same call
+    private boolean sendPhaseOne(int entry_number, int ballot, List<Integer> acceptors, int quorum,
+            int n_acceptors) {
+
+        System.out.println("[PROPOSER] instance = " + entry_number + " ballot = " + ballot + "phase1 start");
+        DidaTradePaxos.PhaseOneRequest p1_request = DidaTradePaxos.PhaseOneRequest.newBuilder()
+                .setInstance(entry_number)
+                .setRequestballot(ballot)
+                .build();
+
+        // A new leader can't just ask its own acceptors. Anything decided in an
+        // older configuration lives there, so we ask every configuration since the
+        // last completed ballot. Each one is a group and needs its own quorum.
+        int lastCompletedBallot = Math.max(state.getCompletedBallot(), 0);
+        List<List<Integer>> groups = new ArrayList<>();
+        List<Integer> quorums = new ArrayList<>();
+        List<Integer> p1_targets = new ArrayList<>();
+        // For each ballot from lastCompletedBallot to current ballot, get the acceptors
+        // and quorum, and add them to the groups and quorums lists. Also, add the
+        // acceptors to the p1_targets list if they are not already there.
+        for (int b = lastCompletedBallot; b <= ballot; b++) {
+            List<Integer> acc = state.scheduler.acceptors(b);
+            if (!groups.contains(acc)) {
+                groups.add(acc);
+                quorums.add(state.scheduler.quorum(b));
+                for (int a : acc)
+                    if (!p1_targets.contains(a))
+                        p1_targets.add(a);
+            }
+        }
+        System.out.println("[PROPOSER] phase1 groups=" + groups + " quorums=" + quorums);
+
+        // send phase 1 to everyone in the groups, the processor counts the
+        // answers per group
+        PhaseOneResponseProcessor p1_processor = new PhaseOneResponseProcessor(groups, quorums);
+        ArrayList<DidaTradePaxos.PhaseOneReply> p1_responses = new ArrayList<>();
+        GenericResponseCollector<DidaTradePaxos.PhaseOneReply> p1_collector = new GenericResponseCollector<>(
+                p1_responses, p1_targets.size(), p1_processor);
+
+        for (int t : p1_targets) {
+            state.async_stubs[t].phaseone(p1_request, new CollectorStreamObserver<>(p1_collector));
+        }
+        p1_collector.waitUntilDone();
+
+        if (!p1_processor.getAccepted()) {
+            // Phase 1 failed, we need to bump our ballot and retry later
+            int maxballot = p1_processor.getMaxballot();
+            System.out.println("[PROPOSER] instance=" + entry_number + " phase1 ABORTED"
+                    + " (higher ballot=" + maxballot + ")");
+            if (maxballot > state.getCurrentBallot()) {
+                state.setCurrentBallot(maxballot);
+            }
+            state.decInstanceIfUnused(entry_number);
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+            }
+            return false;
+
+        } else {
+            state.setPhase1Done(true);
+            state.setAdoptedMap(p1_processor.getAdoptedByInstance());
+            // No record here. this is ANY or an adopted value, not a real client request
+            Integer adoptedVal = state.getAdoptedFor(entry_number);
+            if (adoptedVal != null) {
+                state.clearAdopted(entry_number);
+                System.out.println("[PROPOSER] instance=" + entry_number + " using adopted value=" + adoptedVal);
+                sendPhaseTwo(entry_number, ballot, adoptedVal, acceptors, quorum, n_acceptors, null);
+                return false;
+            }
+
+            if (state.scheduler.fastpaxos(ballot)) {
+                System.out.println("[PROPOSER] instance=" + entry_number + " fast paxos ballot: proposing ANY");
+                sendPhaseTwo(entry_number, ballot, PaxosInstance.ANY_VALUE, acceptors, quorum, n_acceptors, null);
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void sendPhaseTwo(int entry_number, int ballot, int value, List<Integer> acceptors,
