@@ -38,6 +38,14 @@ public class Executor implements Runnable {
             return;
         }
 
+        // During a transfer an instance can be filled with NOOP if nobody accepted it
+        // Also doesn't correspond to a real client request
+        if (entry.command_id == PaxosInstance.NOOP_VALUE) {
+            System.out.println("[EXECUTOR] instance=" + entry_number + " skipping NOOP (instance nobody accepted ))");
+            state.incNextInstanceToExecute();
+            return;
+        }
+
         // Vai buscar o pedido original correspondente a este command_id
         RequestRecord request_record = state.req_history.getIfPending(entry.command_id);
         boolean warned = false;
