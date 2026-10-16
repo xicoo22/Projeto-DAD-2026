@@ -27,15 +27,18 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
         int start_instance = request.getInstance();
         int ballot = request.getRequestballot();
         boolean accepted = false;
+        synchronized (this) {
 
-        if (ballot >= this.server_state.getCurrentBallot()) {
-            accepted = true;
-            this.server_state.setCurrentBallot(ballot);
+            if (ballot >= this.server_state.getCurrentBallot()) {
+                accepted = true;
+                this.server_state.setCurrentBallot(ballot);
+            }
         }
 
         int maxballot = this.server_state.getCurrentBallot();
 
-        DidaTradePaxos.PhaseOneReply.Builder response_builder = DidaTradePaxos.PhaseOneReply.newBuilder();
+        DidaTradePaxos.PhaseOneReply.Builder response_builder = DidaTradePaxos.PhaseOneReply
+                .newBuilder();
         response_builder.setInstance(start_instance);
         response_builder.setServerid(this.server_state.my_id);
         response_builder.setRequestballot(ballot);
@@ -56,9 +59,8 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
                 }
             }
         }
-        System.out.println("[ACCEPTOR] p1 recv start=" + start_instance + " ballot=" + ballot
-                + " -> accept=" + accepted + " maxballot=" + maxballot
-                + " adopted=" + response_builder.getAdoptedCount());
+        System.out.println("[ACCEPTOR] p1 recv start=" + start_instance + " ballot=" + ballot + " -> accept=" + accepted
+                + " maxballot=" + maxballot + " adopted=" + response_builder.getAdoptedCount());
 
         responseObserver.onNext(response_builder.build());
         responseObserver.onCompleted();
@@ -75,31 +77,44 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
         PaxosInstance entry = this.server_state.paxos_log.testAndSetEntry(instance);
         boolean accepted = false;
         int maxballot = ballot;
-        int currentBallot = this.server_state.getCurrentBallot();
 
-        if (entry.decided) {
-            accepted = false;
-        }
-        // Accept a higher ballot, or a retry of the same value. Never a different
-        // value at the same ballot. That's how a collision of 2 clients would silently
-        // overwrite it.
-        else if (ballot > entry.write_ballot || (ballot == entry.write_ballot && value == entry.command_id)) {
-            accepted = true;
-            entry.command_id = value;
-            entry.write_ballot = ballot;
-            this.server_state.setCurrentBallot(ballot);
-            if (value == PaxosInstance.ANY_VALUE) {
-                // Mark fast mode open only here, once ANY has actually been accepted —
-                // not when the Proposer decides to send it (scheduler.fastpaxos(ballot)
-                // is just configuration; it says nothing about whether acceptors have
-                // confirmed ANY yet). Writing it here guarantees clients are only
-                // routed to the direct path once this acceptor can truly serve them.
-                this.server_state.setFastPaxosMode(true);
-                System.out.println(
-                        "[ACCEPTOR] instance=" + instance + " accepted ANY — fast mode open for ballot=" + ballot);
+        String reason = null;
+        synchronized (this) {
+            int currentBallot = this.server_state.getCurrentBallot();
+            if (!this.server_state.scheduler.isacceptor(this.server_state.my_id, ballot)) {
+                reason = "not an acceptor in this ballot";
+            } else if (ballot < currentBallot) {
+                reason = "ballot below promise";
+            } else if (entry.decided && value != entry.command_id) {
+                reason = "decided with another value";
+
+                // Accept a higher ballot, or a retry of the same value. Never a different
+                // value at the same ballot. That's how a collision of 2 clients would silently
+                // overwrite it.
+            } else if (ballot > entry.write_ballot || (ballot == entry.write_ballot && value == entry.command_id)) {
+                accepted = true;
+                entry.command_id = value;
+                entry.write_ballot = ballot;
+                this.server_state.setCurrentBallot(ballot);
+                if (value == PaxosInstance.ANY_VALUE && this.server_state.scheduler.fastpaxos(ballot)) {
+                    // Mark fast mode open only here, once ANY has actually been accepted —
+                    // not when the Proposer decides to send it (scheduler.fastpaxos(ballot)
+                    // is just configuration; it says nothing about whether acceptors have
+                    // confirmed ANY yet). Writing it here guarantees clients are only
+                    // routed to the direct path once this acceptor can truly serve them.
+                    this.server_state.setFastPaxosMode(true);
+                    System.out.println(
+                            "[ACCEPTOR] instance=" + instance + " accepted ANY — fast mode open for ballot=" + ballot);
+                }
+            } else {
+                reason = "already accepted a different value at this ballot";
             }
-        } else {
-            maxballot = currentBallot;
+
+            if (reason != null) {
+                maxballot = currentBallot;
+                System.out.println(
+                        "[ACCEPTOR] p2 reject instance=" + instance + " ballot=" + ballot + " reason=" + reason);
+            }
         }
 
         System.out.println("[ACCEPTOR] p2 recv instance=" + instance + " ballot=" + ballot
@@ -158,20 +173,24 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
 
             this.server_state.setCurrentBallot(ballot);
 
-            if (ballot == entry.accept_ballot) {
-                entry.n_accepts++;
-                if (entry.n_accepts >= this.server_state.scheduler.quorum(ballot) && !entry.decided) {
+            // New ballot: votes from older ballots no longer count.
+            if (ballot > entry.accept_ballot) {
+                entry.accept_ballot = ballot;
+                entry.accepts_by_value.clear();
+            }
+
+            if (ballot == entry.accept_ballot && !entry.decided) {
+                int n_accepts = entry.accepts_by_value.getOrDefault(value, 0) + 1;
+                entry.accepts_by_value.put(value, n_accepts);
+                if (n_accepts >= this.server_state.scheduler.quorum(ballot)) {
                     System.out.println("[LEARNER] instance=" + instance + " decided value=" + value
                             + " ballot=" + ballot);
-                    this.server_state.updateCompletedBallot(ballot);
+                    entry.command_id = value;
                     entry.decided = true;
+
+                    this.server_state.updateCompletedBallot(ballot);
                     this.server_state.executor.wakeup();
                 }
-            } else if (ballot > entry.accept_ballot) {
-                System.out.println("[LEARNER] instance=" + instance + " reset (higher ballot=" + ballot + ")");
-                entry.command_id = value;
-                entry.accept_ballot = ballot;
-                entry.n_accepts = 1;
             }
         }
 

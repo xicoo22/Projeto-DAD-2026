@@ -25,7 +25,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		int reqid = request.getReqid();
 		int quantity = request.getQuantity();
 
-		System.out.println("[CLIENT-RPC] populate reqid=" + reqid + " qty=" + quantity);
+		System.out.println("[CLIENT] populate reqid=" + reqid + " qty=" + quantity);
 
 		DidaTradeCommand command = new DidaTradeCommand(DidaTradeAction.POPULATE, 0, quantity);
 		RequestRecord request_record = new RequestRecord(reqid, command);
@@ -35,9 +35,10 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		boolean result = request_record.waitForResponse();
 		int slot = request_record.getSlot();
 
-		System.out.println("[CLIENT-RPC] populate reqid=" + reqid + " -> result=" + result + " slot=" + slot);
+		System.out.println("[CLIENT] populate reqid=" + reqid + " -> result=" + result + " slot=" + slot);
 
-		DidaTradeMain.PopulateReply response = DidaTradeMain.PopulateReply.newBuilder().setReqid(reqid).setResult(result).setSlot(slot)
+		DidaTradeMain.PopulateReply response = DidaTradeMain.PopulateReply.newBuilder().setReqid(reqid).setResult(result)
+				.setSlot(slot)
 				.build();
 		responseObserver.onNext(response);
 		responseObserver.onCompleted();
@@ -53,7 +54,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		int cash = request.getCash();
 		int stock = request.getStock();
 
-		System.out.println("[CLIENT-RPC] adduser reqid=" + reqid + " uid=" + uid + " cash=" + cash + " stock=" + stock);
+		System.out.println("[CLIENT] adduser reqid=" + reqid + " uid=" + uid + " cash=" + cash + " stock=" + stock);
 
 		DidaTradeCommand command = new DidaTradeCommand(DidaTradeAction.ADDUSER, uid, cash, stock);
 		RequestRecord request_record = new RequestRecord(reqid, command);
@@ -63,9 +64,10 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		boolean result = request_record.waitForResponse();
 		int slot = request_record.getSlot();
 
-		System.out.println("[CLIENT-RPC] adduser reqid=" + reqid + " -> result=" + result + " slot=" + slot);
+		System.out.println("[CLIENT] adduser reqid=" + reqid + " -> result=" + result + " slot=" + slot);
 
-		DidaTradeMain.AddUserReply response = DidaTradeMain.AddUserReply.newBuilder().setReqid(reqid).setResult(result).setSlot(slot)
+		DidaTradeMain.AddUserReply response = DidaTradeMain.AddUserReply.newBuilder().setReqid(reqid).setResult(result)
+				.setSlot(slot)
 				.build();
 
 		responseObserver.onNext(response);
@@ -79,7 +81,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		int uid = request.getUserid();
 		int quantity = request.getQuantity();
 
-		System.out.println("[CLIENT-RPC] buy reqid=" + reqid + " uid=" + uid + " qty=" + quantity);
+		System.out.println("[CLIENT] buy reqid=" + reqid + " uid=" + uid + " qty=" + quantity);
 
 		DidaTradeCommand command = new DidaTradeCommand(DidaTradeAction.BUY, uid, quantity);
 		RequestRecord request_record = new RequestRecord(reqid, command);
@@ -89,9 +91,10 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		boolean result = request_record.waitForResponse();
 		int slot = request_record.getSlot();
 
-		System.out.println("[CLIENT-RPC] buy reqid=" + reqid + " -> result=" + result + " slot=" + slot);
+		System.out.println("[CLIENT] buy reqid=" + reqid + " -> result=" + result + " slot=" + slot);
 
-		DidaTradeMain.BuyReply response = DidaTradeMain.BuyReply.newBuilder().setReqid(reqid).setResult(result).setSlot(slot).build();
+		DidaTradeMain.BuyReply response = DidaTradeMain.BuyReply.newBuilder().setReqid(reqid).setResult(result)
+				.setSlot(slot).build();
 
 		responseObserver.onNext(response);
 		responseObserver.onCompleted();
@@ -105,7 +108,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		int uid = request.getUserid();
 		int quantity = request.getQuantity();
 
-		System.out.println("[CLIENT-RPC] sell reqid=" + reqid + " uid=" + uid + " qty=" + quantity);
+		System.out.println("[CLIENT] sell reqid=" + reqid + " uid=" + uid + " qty=" + quantity);
 
 		DidaTradeCommand command = new DidaTradeCommand(DidaTradeAction.SELL, uid, quantity);
 		RequestRecord request_record = new RequestRecord(reqid, command);
@@ -115,9 +118,10 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		boolean result = request_record.waitForResponse();
 		int slot = request_record.getSlot();
 
-		System.out.println("[CLIENT-RPC] sell reqid=" + reqid + " -> result=" + result + " slot=" + slot);
+		System.out.println("[CLIENT] sell reqid=" + reqid + " -> result=" + result + " slot=" + slot);
 
-		DidaTradeMain.SellReply response = DidaTradeMain.SellReply.newBuilder().setReqid(reqid).setResult(result).setSlot(slot).build();
+		DidaTradeMain.SellReply response = DidaTradeMain.SellReply.newBuilder().setReqid(reqid).setResult(result)
+				.setSlot(slot).build();
 
 		responseObserver.onNext(response);
 		responseObserver.onCompleted();
@@ -132,13 +136,14 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 		int uid = request.getUserid();
 		int min_slot = request.getMinSlot();
 
-		System.out.println("[CLIENT-RPC] balance reqid=" + reqid + " uid=" + uid + " minSlot=" + min_slot);
+		System.out.println("[CLIENT] balance reqid=" + reqid + " uid=" + uid + " minSlot=" + min_slot);
 
 		int applied_slot = this.server_state.waitForMinSlot(min_slot);
 		int balance = this.server_state.trade_manager.balance(uid);
-    	boolean result = (balance != -1);
+		boolean result = (balance != -1);
 
-		System.out.println("[CLIENT-RPC] balance reqid=" + reqid + " -> result=" + result + " balance=" + balance + " appliedSlot=" + applied_slot);
+		System.out.println("[CLIENT] balance reqid=" + reqid + " -> result=" + result + " balance=" + balance
+				+ " appliedSlot=" + applied_slot);
 
 		DidaTradeMain.BalanceReply response = DidaTradeMain.BalanceReply.newBuilder().setReqid(reqid).setResult(result)
 				.setBalance(balance).setAppliedSlot(applied_slot).build();
@@ -153,7 +158,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 
 		int reqid = request.getReqid();
 
-		System.out.println("[CLIENT-RPC] dump reqid=" + reqid);
+		System.out.println("[CLIENT] dump reqid=" + reqid);
 
 		DidaTradeCommand command = new DidaTradeCommand(DidaTradeAction.DUMP);
 		RequestRecord request_record = new RequestRecord(reqid, command);
@@ -162,7 +167,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 
 		boolean result = request_record.waitForResponse();
 
-		System.out.println("[CLIENT-RPC] dump reqid=" + reqid + " -> result=" + result);
+		System.out.println("[CLIENT] dump reqid=" + reqid + " -> result=" + result);
 
 		DidaTradeMain.DumpReply response = DidaTradeMain.DumpReply.newBuilder().setReqid(reqid).setResult(result).build();
 
@@ -199,7 +204,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 				.setValue(reqid)
 				.build();
 
-		System.out.println("[CLIENT-RPC] reqid=" + reqid + " going FAST direct to instance=" + instance);
+		System.out.println("[CLIENT] reqid=" + reqid + " going FAST direct to instance=" + instance);
 
 		final PhaseTwoResponseProcessor tracker = new PhaseTwoResponseProcessor(quorum, n_acceptors);
 		for (int target : acceptors) {
@@ -211,7 +216,7 @@ public class DidaTradeMainServiceImpl extends DidaTradeMainServiceGrpc.DidaTrade
 								server_state.setCurrentBallot(r.getMaxballot());
 							}
 							if (tracker.isImpossible()) {
-								System.out.println("[CLIENT-RPC] reqid=" + reqid
+								System.out.println("[CLIENT] reqid=" + reqid
 										+ " fast direct failed at instance=" + instance
 										+ ", falling back to classic Paxos via Proposer");
 								request_record.setProposed(false);

@@ -364,9 +364,9 @@ public class DidaTradeApp {
 					System.out.println("\tsell <uid> <quantity>");
 					System.out.println("\tbalance <uid>");
 					System.out.println("\tshow");
-					System.out.println("\tbuyloop");
-					System.out.println("\tsellloop");
-					System.out.println("\trandomloop");
+					System.out.println("\tloopbuy");
+					System.out.println("\tloopsell");
+					System.out.println("\tlooprandom");
 					System.out.println("\tlenght loop-lenght");
 					System.out.println("\texit");
 					break;

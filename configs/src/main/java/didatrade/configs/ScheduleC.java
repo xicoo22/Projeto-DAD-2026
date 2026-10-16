@@ -56,16 +56,8 @@ public class ScheduleC extends Schedule {
 			return new Integer(5);
 	}
 
-	/**
-	 * TODO(Step 5): quorum values below are wrong. With 5 acceptors,
-	 * majority = 3, not 2; It should just return 3.
-	 * Fix before implementing dynamic membership (step 5).
-	 */
 	public Integer quorum(int ballot) {
-		if (ballot < 2)
-			return new Integer(2);
-		else
-			return new Integer(3);
+		return new Integer(3);
 	}
 
 	public boolean fastpaxos(int ballot) {

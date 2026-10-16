@@ -19,7 +19,7 @@ public class DidaTradeMasterServiceImpl extends DidaTradeMasterServiceGrpc.DidaT
         int new_ballot = request.getNewballot();
         int completed_ballot = request.getCompletedballot();
 
-        System.out.println("[CONSOLE-RPC] newballot new=" + new_ballot + " completed=" + completed_ballot
+        System.out.println(" [CONSOLE] newballot new=" + new_ballot + " completed=" + completed_ballot
                 + " (current=" + this.server_state.getCurrentBallot() + ")");
 
         this.server_state.setCompletedBallot(completed_ballot);
@@ -50,7 +50,7 @@ public class DidaTradeMasterServiceImpl extends DidaTradeMasterServiceGrpc.DidaT
         int request_id = request.getReqid();
         int completed_ballot = request.getCompletedballot();
 
-        System.out.println("[CONSOLE-RPC] activate ballot=" + completed_ballot
+        System.out.println(" [CONSOLE] activate ballot=" + completed_ballot
                 + " (current=" + this.server_state.getCurrentBallot() + ")");
 
         DidaTradeMaster.ActivateReply.Builder response_builder = DidaTradeMaster.ActivateReply.newBuilder();
@@ -68,7 +68,7 @@ public class DidaTradeMasterServiceImpl extends DidaTradeMasterServiceGrpc.DidaT
         boolean response_value = true;
         DebugMode mode = DebugMode.fromInt(request.getMode());
 
-        System.out.println("[CONSOLE-RPC] setdebug mode=" + mode);
+        System.out.println(" [CONSOLE] setdebug mode=" + mode);
 
         switch (mode) {
             case CRASH:
@@ -88,7 +88,7 @@ public class DidaTradeMasterServiceImpl extends DidaTradeMasterServiceGrpc.DidaT
                 this.server_state.setDebugMode(DebugMode.NONE);
                 break;
             default:
-                System.err.println("[CONSOLE-RPC] ignoring invalid debug mode");
+                System.err.println(" [CONSOLE] ignoring invalid debug mode");
                 response_value = false;
                 break;
         }
