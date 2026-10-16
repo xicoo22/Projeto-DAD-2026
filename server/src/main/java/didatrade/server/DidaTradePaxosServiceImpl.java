@@ -107,7 +107,7 @@ public class DidaTradePaxosServiceImpl extends DidaTradePaxosServiceGrpc.DidaTra
                             "[ACCEPTOR] instance=" + instance + " accepted ANY — fast mode open for ballot=" + ballot);
                 }
             } else {
-                reason = "already accepted at a higher ballot";
+                reason = "already accepted a different value at this ballot";
             }
 
             if (reason != null) {

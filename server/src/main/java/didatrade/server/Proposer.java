@@ -1,7 +1,12 @@
 package didatrade.server;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import didatrade.DidaTradePaxos;
 import didatrade.util.CollectorStreamObserver;
@@ -97,10 +102,6 @@ public class Proposer implements Runnable {
             int n_acceptors) {
 
         System.out.println("[PROPOSER] instance = " + entry_number + " ballot = " + ballot + "phase1 start");
-        DidaTradePaxos.PhaseOneRequest p1_request = DidaTradePaxos.PhaseOneRequest.newBuilder()
-                .setInstance(entry_number)
-                .setRequestballot(ballot)
-                .build();
 
         // A new leader can't just ask its own acceptors. Anything decided in an
         // older configuration lives there, so we ask every configuration since the
@@ -122,7 +123,15 @@ public class Proposer implements Runnable {
                         p1_targets.add(a);
             }
         }
-        System.out.println("[PROPOSER] phase1 groups=" + groups + " quorums=" + quorums);
+        boolean transfer = groups.size() > 1;
+        int start = transfer ? 0 : entry_number;
+        System.out.println("[PROPOSER] phase1 groups=" + groups + " quorums=" + quorums
+                + " transfer=" + transfer + " from instance " + start);
+
+        DidaTradePaxos.PhaseOneRequest p1_request = DidaTradePaxos.PhaseOneRequest.newBuilder()
+                .setInstance(start)
+                .setRequestballot(ballot)
+                .build();
 
         // send phase 1 to everyone in the groups, the processor counts the
         // answers per group
@@ -152,8 +161,46 @@ public class Proposer implements Runnable {
             return false;
 
         } else {
+            Map<Integer, Integer> adopted = p1_processor.getAdoptedByInstance();
+            if (transfer && !adopted.isEmpty()) {
+                int max = Collections.max(adopted.keySet());
+                System.out.println("[PROPOSER] ballot=" + ballot + " state transfer of instances 0.." + max
+                        + " to " + acceptors);
+                if (!transferState(ballot, max, adopted, acceptors, quorum)) {
+                    System.out.println("[PROPOSER] ballot=" + ballot + " state transfer FAILED, will retry");
+                    state.decInstanceIfUnused(entry_number);
+                    try { Thread.sleep(200); } catch (InterruptedException e) { }
+                    return false;
+                }
+                System.out.println("[PROPOSER] ballot=" + ballot + " state transfer COMPLETE");
+
+                // the next instance can’t leave holes behind the copied log
+                state.setNextInstanceToPropose(max + 1);
+
+                // a request that is already in the copied log isn’t decided twice
+                for (int v : adopted.values()) {
+                    RequestRecord r = state.req_history.getIfPending(v);
+                    if (r != null) {
+                        r.setProposed(true);
+                    }
+                }
+
+                // the console’s reply doesn’t depend on another decision, and the next ballot’s Phase 1 starts from here
+                state.setPhase1Done(true);
+                state.setCompletedBallot(ballot);
+
+                // fast ballots open their first round at the right instance
+                if (state.scheduler.fastpaxos(ballot)) {
+                    int next = state.getAndIncNextInstanceToPropose();
+                    System.out.println("[PROPOSER] ballot=" + ballot
+                            + " fast paxos ballot: proposing ANY at instance=" + next);
+                    sendPhaseTwo(next, ballot, PaxosInstance.ANY_VALUE, acceptors, quorum, n_acceptors, null);
+                }
+                return false;
+            }
+            
             state.setPhase1Done(true);
-            state.setAdoptedMap(p1_processor.getAdoptedByInstance());
+            state.setAdoptedMap(adopted);
             // No record here. this is ANY or an adopted value, not a real client request
             Integer adoptedVal = state.getAdoptedFor(entry_number);
             if (adoptedVal != null) {
@@ -215,6 +262,66 @@ public class Proposer implements Runnable {
 
         System.out.println("[PROPOSER] instance=" + entry_number + " reqid=" + value + " phase2 SENT (async)");
 
+    }
+
+    private void sendPhaseTwoTracked(int instance, int ballot, int value, List<Integer> acceptors, int quorum, AtomicInteger acks, CountDownLatch latch) {
+        DidaTradePaxos.PhaseTwoRequest request = DidaTradePaxos.PhaseTwoRequest.newBuilder()
+                .setInstance(instance).setRequestballot(ballot).setValue(value).build();
+        PhaseTwoResponseProcessor tracker = new PhaseTwoResponseProcessor(quorum, acceptors.size());
+
+        for (int a : acceptors) {
+            state.async_stubs[a].phasetwo(request,
+                    new io.grpc.stub.StreamObserver<DidaTradePaxos.PhaseTwoReply>() {
+                        public void onNext(DidaTradePaxos.PhaseTwoReply r) {
+                            tracker.onResponse(r.getAccepted());
+                            if (r.getAccepted() && acks.incrementAndGet() >= quorum) {
+                                latch.countDown();               // a quorum accepted
+                            } else if (tracker.isImpossible()) {
+                                latch.countDown();               // a quorum can no longer be reached
+                            }
+                        }
+
+                        public void onError(Throwable t) {
+                            tracker.onResponse(false);
+                            if (tracker.isImpossible()) {
+                                latch.countDown();
+                            }
+                        }
+
+                        public void onCompleted() {
+                        }
+                    });
+        }
+    }
+
+    private boolean transferState(int ballot, int max, Map<Integer, Integer> adopted, List<Integer> acceptors, int quorum) {
+        List<AtomicInteger> acks = new ArrayList<>();
+        List<CountDownLatch> latches = new ArrayList<>();
+
+        for (int inst = 0; inst <= max; inst++) {
+            Integer found = adopted.get(inst);
+            int value = (found != null) ? found : PaxosInstance.NOOP_VALUE;   // hole -> no-op
+            AtomicInteger count = new AtomicInteger();
+            CountDownLatch latch = new CountDownLatch(1);
+            acks.add(count);
+            latches.add(latch);
+            sendPhaseTwoTracked(inst, ballot, value, acceptors, quorum, count, latch);
+        }
+
+        boolean ok = true;
+        for (int i = 0; i < latches.size(); i++) {
+            try {
+                if (!latches.get(i).await(10, TimeUnit.SECONDS)) {
+                    ok = false;
+                }
+            } catch (InterruptedException e) {
+                ok = false;
+            }
+            if (acks.get(i).get() < quorum) {
+                ok = false;
+            }
+        }
+        return ok;
     }
 
     // If Phase 1 is not done, we have to do it anyway, even if there are no pending

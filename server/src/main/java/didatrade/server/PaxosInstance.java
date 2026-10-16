@@ -5,6 +5,7 @@ import java.util.Map;
 
 public class PaxosInstance {
         public static final int ANY_VALUE = Integer.MIN_VALUE;
+        public static final int NOOP_VALUE = Integer.MIN_VALUE + 1;
 
         int instance_nb;
         int command_id;

@@ -256,4 +256,8 @@ public class DidaTradeServerState {
         this.incNextInstanceToPropose();
         return n;
     }
+
+    public synchronized void setNextInstanceToPropose(int n) {
+        this.next_instance_to_propose = n;
+    }
 }
