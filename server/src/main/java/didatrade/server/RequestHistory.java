@@ -52,6 +52,16 @@ public class RequestHistory {
         Integer id = new Integer(requestid);
 
         this.pending.put(id, record);
+        notifyAll();
+    }
+
+    public synchronized RequestRecord waitForPending(int requestid) throws InterruptedException {
+        Integer id = new Integer(requestid);
+        RequestRecord r;
+        while ((r = this.pending.get(id)) == null) {
+            wait();
+        }
+        return r;
     }
 
     public synchronized RequestRecord moveToProcessed(int requestid) {

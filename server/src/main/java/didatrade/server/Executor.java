@@ -55,14 +55,16 @@ public class Executor implements Runnable {
                         + " waiting for record reqid=" + entry.command_id);
                 warned = true;
             }
-            synchronized (this) {
-                // Wait a bit for the record to be registered in this server. Nothing notifies
-                // us when it is, so poll instead of blocking forever.
+            System.out.println("[EXECUTOR] instance=" + entry_number
+                    + " waiting for record reqid=" + entry.command_id);
+            // Wait for the record to be registered in this server.
+            while (request_record == null) {
                 try {
-                    wait(100);
+                    request_record = state.req_history.waitForPending(entry.command_id);
                 } catch (InterruptedException e) {
                 }
             }
+
             request_record = state.req_history.getIfPending(entry.command_id);
         }
 
@@ -86,7 +88,7 @@ public class Executor implements Runnable {
             case BUY:
                 result = state.trade_manager.acquire(command.getUserId(), command.getQuantity());
                 break;
-            case BALANCE:   // case obsolete after step4
+            case BALANCE: // case obsolete after step4
                 balance = state.trade_manager.balance(command.getUserId());
                 command.setQuantity(balance);
                 result = (balance != -1);
@@ -103,7 +105,7 @@ public class Executor implements Runnable {
 
         System.out.println("[EXECUTOR] instance=" + entry_number + " apply " + action
                 + " reqid=" + entry.command_id + " -> result=" + result);
-        
+
         request_record.setSlot(entry_number);
         state.incNextInstanceToExecute();
         request_record.setResponse(result);
