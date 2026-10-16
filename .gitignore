@@ -1,6 +1,7 @@
 target/
 run_scripts/
 dev_env/
+logs/
 .vscode/
 .DS_Store
 *.pdf
