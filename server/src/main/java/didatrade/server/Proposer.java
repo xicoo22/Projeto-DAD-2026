@@ -162,43 +162,59 @@ public class Proposer implements Runnable {
 
         } else {
             Map<Integer, Integer> adopted = p1_processor.getAdoptedByInstance();
-            if (transfer && !adopted.isEmpty()) {
+            if (!adopted.isEmpty()) {
+
                 int max = Collections.max(adopted.keySet());
-                System.out.println("[PROPOSER] ballot=" + ballot + " state transfer of instances 0.." + max
-                        + " to " + acceptors);
-                if (!transferState(ballot, max, adopted, acceptors, quorum)) {
-                    System.out.println("[PROPOSER] ballot=" + ballot + " state transfer FAILED, will retry");
-                    state.decInstanceIfUnused(entry_number);
-                    try { Thread.sleep(200); } catch (InterruptedException e) { }
+                if (transfer) {
+                    System.out.println("[PROPOSER] ballot=" + ballot + " state transfer of instances 0.." + max
+                            + " to " + acceptors);
+                    if (!transferState(ballot, max, adopted, acceptors, quorum)) {
+                        System.out.println("[PROPOSER] ballot=" + ballot + " state transfer FAILED, will retry");
+                        state.decInstanceIfUnused(entry_number);
+                        try {
+                            Thread.sleep(200);
+                        } catch (InterruptedException e) {
+                        }
+                        return false;
+                    }
+                    System.out.println("[PROPOSER] ballot=" + ballot + " state transfer COMPLETE");
+
+                    // the next instance can’t leave holes behind the copied log
+                    state.setNextInstanceToPropose(max + 1);
+
+                    // a request that is already in the copied log isn’t decided twice
+                    for (int v : adopted.values()) {
+                        RequestRecord r = state.req_history.getIfPending(v);
+                        if (r != null) {
+                            r.setProposed(true);
+                        }
+                    }
+
+                    // the console’s reply doesn’t depend on another decision, and the next ballot’s
+                    // Phase 1 starts from here
+                    state.setPhase1Done(true);
+                    state.setCompletedBallot(ballot);
+
+                    // fast ballots open their first round at the right instance
+                    if (state.scheduler.fastpaxos(ballot)) {
+                        int next = state.getAndIncNextInstanceToPropose();
+                        System.out.println("[PROPOSER] ballot=" + ballot
+                                + " fast paxos ballot: proposing ANY at instance=" + next);
+                        sendPhaseTwo(next, ballot, PaxosInstance.ANY_VALUE, acceptors, quorum, n_acceptors, null);
+                    }
                     return false;
-                }
-                System.out.println("[PROPOSER] ballot=" + ballot + " state transfer COMPLETE");
-
-                // the next instance can’t leave holes behind the copied log
-                state.setNextInstanceToPropose(max + 1);
-
-                // a request that is already in the copied log isn’t decided twice
-                for (int v : adopted.values()) {
-                    RequestRecord r = state.req_history.getIfPending(v);
-                    if (r != null) {
-                        r.setProposed(true);
+                } else {
+                    fillHoles(ballot, entry_number, max, adopted, acceptors, quorum);
+                    if (!adopted.containsKey(entry_number)) {
+                        // this instance was itself a hole and now holds a NOOP, nothing else to propose
+                        // in it
+                        state.setPhase1Done(true);
+                        state.setAdoptedMap(adopted);
+                        return false;
                     }
                 }
-
-                // the console’s reply doesn’t depend on another decision, and the next ballot’s Phase 1 starts from here
-                state.setPhase1Done(true);
-                state.setCompletedBallot(ballot);
-
-                // fast ballots open their first round at the right instance
-                if (state.scheduler.fastpaxos(ballot)) {
-                    int next = state.getAndIncNextInstanceToPropose();
-                    System.out.println("[PROPOSER] ballot=" + ballot
-                            + " fast paxos ballot: proposing ANY at instance=" + next);
-                    sendPhaseTwo(next, ballot, PaxosInstance.ANY_VALUE, acceptors, quorum, n_acceptors, null);
-                }
-                return false;
             }
-            
+
             state.setPhase1Done(true);
             state.setAdoptedMap(adopted);
             // No record here. this is ANY or an adopted value, not a real client request
@@ -264,7 +280,8 @@ public class Proposer implements Runnable {
 
     }
 
-    private void sendPhaseTwoTracked(int instance, int ballot, int value, List<Integer> acceptors, int quorum, AtomicInteger acks, CountDownLatch latch) {
+    private void sendPhaseTwoTracked(int instance, int ballot, int value, List<Integer> acceptors, int quorum,
+            AtomicInteger acks, CountDownLatch latch) {
         DidaTradePaxos.PhaseTwoRequest request = DidaTradePaxos.PhaseTwoRequest.newBuilder()
                 .setInstance(instance).setRequestballot(ballot).setValue(value).build();
         PhaseTwoResponseProcessor tracker = new PhaseTwoResponseProcessor(quorum, acceptors.size());
@@ -275,9 +292,9 @@ public class Proposer implements Runnable {
                         public void onNext(DidaTradePaxos.PhaseTwoReply r) {
                             tracker.onResponse(r.getAccepted());
                             if (r.getAccepted() && acks.incrementAndGet() >= quorum) {
-                                latch.countDown();               // a quorum accepted
+                                latch.countDown(); // a quorum accepted
                             } else if (tracker.isImpossible()) {
-                                latch.countDown();               // a quorum can no longer be reached
+                                latch.countDown(); // a quorum can no longer be reached
                             }
                         }
 
@@ -294,13 +311,14 @@ public class Proposer implements Runnable {
         }
     }
 
-    private boolean transferState(int ballot, int max, Map<Integer, Integer> adopted, List<Integer> acceptors, int quorum) {
+    private boolean transferState(int ballot, int max, Map<Integer, Integer> adopted, List<Integer> acceptors,
+            int quorum) {
         List<AtomicInteger> acks = new ArrayList<>();
         List<CountDownLatch> latches = new ArrayList<>();
 
         for (int inst = 0; inst <= max; inst++) {
             Integer found = adopted.get(inst);
-            int value = (found != null) ? found : PaxosInstance.NOOP_VALUE;   // hole -> no-op
+            int value = (found != null) ? found : PaxosInstance.NOOP_VALUE; // hole -> no-op
             AtomicInteger count = new AtomicInteger();
             CountDownLatch latch = new CountDownLatch(1);
             acks.add(count);
@@ -322,6 +340,19 @@ public class Proposer implements Runnable {
             }
         }
         return ok;
+    }
+
+    private void fillHoles(int ballot, int from, int max, Map<Integer, Integer> adopted,
+            List<Integer> acceptors, int quorum) {
+        for (int instance = from; instance <= max; instance++) {
+            if (adopted.containsKey(instance)) {
+                continue; // someone accepted a value here, the normal path re-proposes it
+            }
+            if (state.paxos_log.testAndSetEntry(instance).decided) {
+                continue; // already decided on this server
+            }
+            sendPhaseTwo(instance, ballot, PaxosInstance.NOOP_VALUE, acceptors, quorum, acceptors.size(), null);
+        }
     }
 
     // If Phase 1 is not done, we have to do it anyway, even if there are no pending
